@@ -557,6 +557,10 @@ void EpubReaderActivity::loop() {
           return;
         }
         break;
+      case CrossPointSettings::LP_MENU_READER_MENU:
+        // Short-press Confirm already opens the reader menu on release, so a
+        // hold needs no separate action here; the option exists for the
+        // home-key hold below, where the menu is otherwise a gesture away.
       case CrossPointSettings::LP_MENU_DISABLED:
       default:
         break;
@@ -587,6 +591,9 @@ void EpubReaderActivity::loop() {
         if (!showDictionaryMessage) {
           openDictionaryWordSelect();
         }
+        return;
+      case CrossPointSettings::LP_MENU_READER_MENU:
+        openReaderMenu();
         return;
       case CrossPointSettings::LP_MENU_DISABLED:
       default:
