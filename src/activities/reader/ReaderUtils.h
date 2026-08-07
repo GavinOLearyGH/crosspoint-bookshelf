@@ -124,8 +124,11 @@ inline TouchPageTurn detectTouchPageTurn(GfxRenderer& renderer, const MappedInpu
 // Reader menu opens on the menu edge-swipe. On home-key boards a long press of
 // the capacitive key runs the user-selected long-press function instead
 // (SETTINGS.longPressMenuFunction), not the menu.
+// Deliberately NOT gated on SETTINGS.touchReaderControls: that setting governs
+// page-turn input (Off/Tap/Swipe); the menu gesture must survive "Off" or a
+// buttonless board loses its only path into the reader menu.
 inline bool isTouchMenuGesture(const MappedInputManager& input) {
-  return SETTINGS.touchReaderControls && input.hasTouch() && input.wasMenuGesture();
+  return input.hasTouch() && input.wasMenuGesture();
 }
 
 // One helper, blocking or deferred: the async form starts the refresh and
