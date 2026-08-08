@@ -443,8 +443,15 @@ void setup() {
     case HalGPIO::WakeupReason::AfterUSBPower:
       // If USB power caused a cold boot, go back to sleep
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
+#if FREEINK_DEVICE_PAPERMONO
+      // Paper Mono's power button is behind the M5PM1 PMIC, so there is no
+      // armable GPIO wake source: sleeping here bricks the device until the
+      // next USB replug, which lands right back in this case. Boot instead.
+      break;
+#else
       powerManager.startDeepSleep(gpio);
       break;
+#endif
     case HalGPIO::WakeupReason::AfterFlash:
       // After flashing, just proceed to boot
     case HalGPIO::WakeupReason::Other:
