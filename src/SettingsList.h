@@ -232,6 +232,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           "uiTheme", StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
+        // Night mode = inverted output polarity. Same persisted flag the
+        // frontlight quick panel toggles; SettingsActivity applies it live via
+        // display.setInverted() (see applyUiSettingChange).
+        SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
+                            StrId::STR_CAT_DISPLAY),
 #if FREEINK_CAP_FRONTLIGHT
         // Only meaningful on boards with a frontlight; hidden elsewhere.
         SettingInfo::Toggle(StrId::STR_RESTORE_LIGHT_ON_WAKE, &CrossPointSettings::frontlightRestoreOnWake,
@@ -342,7 +347,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Value(StrId::STR_WARMTH, &CrossPointSettings::frontlightWarmth, {0, 100, 5}, "frontlightWarmth"),
 #endif
         SettingInfo::Toggle(StrId::STR_FRONTLIGHT, &CrossPointSettings::frontlightOn, "frontlightOn"),
-        SettingInfo::Toggle(StrId::STR_INVERTED, &CrossPointSettings::screenInverted, "screenInverted"),
 
         // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
         SettingInfo::DynamicString(
