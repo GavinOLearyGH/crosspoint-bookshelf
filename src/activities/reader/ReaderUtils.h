@@ -104,11 +104,12 @@ inline TouchPageTurn detectTouchPageTurn(GfxRenderer& renderer, const MappedInpu
 
   const int16_t width = static_cast<int16_t>(renderer.getScreenWidth());
   const int16_t height = static_cast<int16_t>(renderer.getScreenHeight());
-  const int16_t previousZoneWidth = width / 3;
+  // Outer thirds only: the middle third is the reader-menu tap
+  // (isTouchMenuTap below), so it must not double as a page turn.
+  const int16_t zoneWidth = width / 3;
   const freeink::ui::TapZone zones[] = {
-      {freeink::ui::Rect{0, 0, previousZoneWidth, height}, READER_TOUCH_PREV},
-      {freeink::ui::Rect{previousZoneWidth, 0, static_cast<int16_t>(width - previousZoneWidth), height},
-       READER_TOUCH_NEXT},
+      {freeink::ui::Rect{0, 0, zoneWidth, height}, READER_TOUCH_PREV},
+      {freeink::ui::Rect{static_cast<int16_t>(width - zoneWidth), 0, zoneWidth, height}, READER_TOUCH_NEXT},
   };
 
   for (const auto& zone : zones) {
@@ -121,14 +122,28 @@ inline TouchPageTurn detectTouchPageTurn(GfxRenderer& renderer, const MappedInpu
   return result;
 }
 
-// Reader menu opens on the menu edge-swipe. On home-key boards a long press of
-// the capacitive key runs the user-selected long-press function instead
-// (SETTINGS.longPressMenuFunction), not the menu.
+// Tap in the middle third of the screen: the tap path into the reader menu on
+// every touch board. The page-turn tap zones are the outer thirds, so the
+// middle is free in tap mode; in swipe mode and with touch controls Off a tap
+// is otherwise unused. Not gated on SETTINGS.touchReaderControls for the same
+// reason as the edge gesture below.
+inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!input.hasTouch()) return false;
+  int x = 0;
+  int y = 0;
+  if (!input.wasScreenTapped(x, y)) return false;
+  const int width = renderer.getScreenWidth();
+  return x >= width / 3 && x < (2 * width) / 3;
+}
+
+// Reader menu opens on the menu edge-swipe or a middle-third tap. On home-key
+// boards a long press of the capacitive key runs the user-selected long-press
+// function instead (SETTINGS.longPressMenuFunction), not the menu.
 // Deliberately NOT gated on SETTINGS.touchReaderControls: that setting governs
 // page-turn input (Off/Tap/Swipe); the menu gesture must survive "Off" or a
 // buttonless board loses its only path into the reader menu.
-inline bool isTouchMenuGesture(const MappedInputManager& input) {
-  return input.hasTouch() && input.wasMenuGesture();
+inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input) {
+  return (input.hasTouch() && input.wasMenuGesture()) || isTouchMenuTap(renderer, input);
 }
 
 // One helper, blocking or deferred: the async form starts the refresh and
@@ -150,6 +165,22 @@ inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntil
   }
 }
 
+// Front half of a combined grayscale activation, for panels whose driver
+// defers the base (combinesGrayscaleBase, SSD1683): same cadence bookkeeping
+// as displayWithRefreshCycle, but the BW target is stashed instead of
+// activated, so the gray planes streamed afterward join it in a single
+// waveform. A separate BW refresh first would make the gray pass re-drive the
+// whole text through the custom LUT's kick phases (visible flash).
+inline void displayGrayscaleBaseWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
+  const auto mode = (pagesUntilFullRefresh <= 1) ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
+  renderer.displayGrayscaleBase(mode);
+  if (pagesUntilFullRefresh <= 1) {
+    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
+  } else {
+    pagesUntilFullRefresh--;
+  }
+}
+
 // Grayscale anti-aliasing pass. Renders content twice (LSB + MSB) to build
 // the grayscale buffer. Only the content callback is re-rendered — status bars
 // and other overlays should be drawn before calling this.
@@ -158,6 +189,12 @@ template <typename RenderFn>
 void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
   if (!renderer.storeBwBuffer()) {
     LOG_ERR("READER", "Failed to store BW buffer for anti-aliasing");
+    if (renderer.combinesGrayscaleBase()) {
+      // The caller deferred the base into this pass (displayGrayscaleBase);
+      // the driver's cleanup commits the stashed BW target so the page still
+      // reaches the panel, just without grays.
+      renderer.cleanupGrayscaleWithFrameBuffer();
+    }
     return;
   }
 

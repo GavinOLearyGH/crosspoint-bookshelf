@@ -444,9 +444,9 @@ void setup() {
       // If USB power caused a cold boot, go back to sleep
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
 #if FREEINK_DEVICE_PAPERMONO
-      // Paper Mono's power button is behind the M5PM1 PMIC, so there is no
-      // armable GPIO wake source: sleeping here bricks the device until the
-      // next USB replug, which lands right back in this case. Boot instead.
+      // No armable GPIO wake (the power button is behind the PMIC): sleeping
+      // here would strand the device until the next USB replug, which lands
+      // right back in this case. Boot instead.
       break;
 #else
       powerManager.startDeepSleep(gpio);
@@ -739,6 +739,20 @@ void loop() {
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
     return;
   }
+
+#if FREEINK_DEVICE_PAPERMONO
+  // The power button is a PMIC click event (one-tick BTN_POWER pulse), so the
+  // held-time sleep path above cannot fire. Sleep on the release event, and by
+  // default (IGNORE) too — a click is this board's only power-button signal;
+  // an explicit non-sleep binding repurposes it. allowSleepAt guards against a
+  // click latched in the PMIC's read-clear status register from the wake.
+  if ((SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP ||
+       SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::IGNORE) &&
+      millis() >= allowSleepAt && mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
+    enterDeepSleep();
+    return;
+  }
+#endif
 
   // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
   if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&

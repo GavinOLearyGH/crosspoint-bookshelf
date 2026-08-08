@@ -399,7 +399,12 @@ void TxtReaderActivity::renderPage() {
   renderLines();
   renderStatusBar();
 
-  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+  if (SETTINGS.textAntiAliasing && renderer.combinesGrayscaleBase()) {
+    // Defer the BW base so the AA planes join it in a single activation.
+    ReaderUtils::displayGrayscaleBaseWithRefreshCycle(renderer, pagesUntilFullRefresh);
+  } else {
+    ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+  }
 
   if (SETTINGS.textAntiAliasing) {
     ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); });

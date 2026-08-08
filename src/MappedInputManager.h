@@ -92,8 +92,9 @@ class MappedInputManager {
   // bottom-edge up-swipe (freed by the home key); others keep the top-edge
   // down-swipe.
   bool wasMenuGesture() const;
-  // Frontlight quick panel: top-edge down-swipe, only on home-key boards where
-  // that edge is no longer the menu gesture.
+  // Frontlight quick panel: top-edge down-swipe on any board with a frontlight
+  // (Frontlight.present()). Takes priority over the top-edge menu gesture;
+  // the menu remains reachable via Confirm and the middle-third tap.
   bool wasLightPanelGesture() const;
   // Long press of the capacitive home key (home-key boards only). A short tap
   // goes home; the hold runs the user-selected long-press function

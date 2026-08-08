@@ -76,9 +76,10 @@ void ActivityManager::loop() {
       return;
     }
 
-    // Frontlight quick panel: global top-edge down-swipe on boards where the
-    // home key freed that edge (X4 Pro). Pushed, so it returns to whatever
-    // was underneath — including mid-book.
+    // Frontlight quick panel: global top-edge down-swipe on any board with a
+    // frontlight (the gesture itself is capability-gated in
+    // wasLightPanelGesture()). Pushed, so it returns to whatever was
+    // underneath — including mid-book.
     if (Frontlight.present() && currentActivity->name != "FrontlightPanel" && mappedInput.wasLightPanelGesture()) {
       pushActivity(std::make_unique<FrontlightPanelActivity>(renderer, mappedInput));
       return;

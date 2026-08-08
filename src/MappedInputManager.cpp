@@ -1,6 +1,7 @@
 #include "MappedInputManager.h"
 
 #include <GfxRenderer.h>
+#include <HalFrontlight.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -355,7 +356,13 @@ bool MappedInputManager::wasHomeGesture() const {
 
 bool MappedInputManager::wasHomeKeyHold() const { return gpio.hasHomeKey() && gpio.wasHomeKeyLongPressed(); }
 
-bool MappedInputManager::wasLightPanelGesture() const { return gpio.hasHomeKey() && wasTopEdgeDownSwipe(); }
+bool MappedInputManager::wasLightPanelGesture() const {
+  // Capability-gated, not board-gated: any board with a frontlight gets the
+  // panel on the top edge. On lightless boards that edge stays the menu
+  // gesture. ActivityManager consumes the swipe before the activity's loop
+  // runs, so wasMenuGesture() cannot double-fire.
+  return Frontlight.present() && wasTopEdgeDownSwipe();
+}
 
 bool MappedInputManager::wasPressed(const Button button) const {
   if (button == Button::Back && wasBackGesture()) return true;

@@ -336,7 +336,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         // panel on frontlight boards).
         SettingInfo::Value(StrId::STR_BRIGHTNESS, &CrossPointSettings::frontlightBrightness, {0, 100, 5},
                            "frontlightBrightness"),
+#if FREEINK_CAP_WARMLIGHT
+        // Warm/cool mix: only on boards with a second warm channel (X4 Pro).
+        // Single-channel frontlight boards (Paper Mono) compile it out.
         SettingInfo::Value(StrId::STR_WARMTH, &CrossPointSettings::frontlightWarmth, {0, 100, 5}, "frontlightWarmth"),
+#endif
         SettingInfo::Toggle(StrId::STR_FRONTLIGHT, &CrossPointSettings::frontlightOn, "frontlightOn"),
         SettingInfo::Toggle(StrId::STR_INVERTED, &CrossPointSettings::screenInverted, "screenInverted"),
 

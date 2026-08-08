@@ -99,12 +99,10 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   freeink::PowerManager::powerDownRailsForSleep();
 
 #if FREEINK_DEVICE_PAPERMONO
-  // Paper Mono's power button sits behind the M5PM1 PMIC, not an ESP GPIO
-  // (input.power is unassigned), so deepSleepUntilPowerButton() would arm no
-  // wake source and the device could only be revived by a USB replug. Real
-  // "off" here is a PMIC shutdown: rails collapse and a power-button click
-  // restarts the system through a cold boot. Falls through to plain deep
-  // sleep only if the PMIC write fails, so the device still stops draining.
+  // The power button sits behind the M5PM1 PMIC (input.power unassigned), so
+  // deepSleepUntilPowerButton() would arm no wake source. Real "off" is a PMIC
+  // shutdown: rails collapse and a button click restarts through a cold boot.
+  // Falls through to plain deep sleep only if the PMIC write fails.
   if (freeink::m5pm1::requestShutdown()) {
     delay(1000);  // PY32 firmware processes the command; power drops in this window
   }

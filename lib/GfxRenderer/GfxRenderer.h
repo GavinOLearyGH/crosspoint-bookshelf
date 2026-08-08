@@ -177,6 +177,9 @@ class GfxRenderer {
   // fadingFix isn't forcing the blocking path. Callers can skip overlap
   // scaffolding (e.g. whole-plane grayscale buffers) when false.
   bool supportsAsyncRefresh() const;
+  // Panel defers the grayscale base into the gray activation (SSD1683); the
+  // reader routes its AA base via displayGrayscaleBase() when true.
+  bool combinesGrayscaleBase() const;
   // EXPERIMENTAL: Windowed update - display only a rectangular region
   // void displayWindow(int x, int y, int width, int height) const;
   void invertScreen() const;
