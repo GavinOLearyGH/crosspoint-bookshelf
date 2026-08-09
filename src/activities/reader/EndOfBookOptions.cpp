@@ -4,6 +4,9 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <algorithm>
+#include <iterator>
+
 #include "CrossPointSettings.h"
 #include "ReaderUtils.h"
 // ReaderUtils.h pulls in ActivityManager.h, which only forward-declares Activity while holding
@@ -77,6 +80,9 @@ EndOfBookOptions::Action EndOfBookOptions::handleMenuInput(const MappedInputMana
     if (snap.touchPressed || snap.touchReleased) {
       tappedRow = -1;
       const auto event = app.route(snap);
+      // cppcheck can't see that route() dispatches into onRowEvent (registered via
+      // app.on(ACTION_ROW, ...)), which sets tappedRow, so it flags this as always false.
+      // cppcheck-suppress knownConditionTrueFalse
       if (event && tappedRow >= 0) {
         if (tappedRow < static_cast<int>(names.size())) {
           if (openPath) {
@@ -151,9 +157,8 @@ void EndOfBookOptions::buildListScreen(UiApp::ScreenType& screen) {
   // drawn before this scope exits.
   std::vector<std::string> labels;
   labels.reserve(names.size() + 1);
-  for (const auto& name : names) {
-    labels.push_back(displayName(name));
-  }
+  std::transform(names.begin(), names.end(), std::back_inserter(labels),
+                 [](const std::string& name) { return displayName(name); });
   labels.push_back(std::string(tr(STR_EOB_HOME)));
 
   std::vector<fui::ListItem> items;
