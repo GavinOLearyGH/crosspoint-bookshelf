@@ -40,6 +40,12 @@ class MappedInputManager {
   MappedInputManager(HalGPIO& gpio, const GfxRenderer& renderer) : gpio(gpio), renderer(renderer) {}
 
   void update() const { gpio.update(); }
+  // PWR_CONFIRM on boards with the power-button double-click frontlight toggle
+  // (X4 Pro): the main loop's click tracker calls this every frame, true for
+  // exactly the frame where a single click matured (double-click window passed
+  // with no second click). wasPowerConfirmClick reads it instead of the raw
+  // release edge on those boards.
+  void setPowerConfirmClickFrame(const bool clicked) { powerConfirmClickFrame = clicked; }
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;
@@ -131,9 +137,13 @@ class MappedInputManager {
   bool wasBottomEdgeUpSwipe() const;
   // Fetch the pending swipe (if any) and map both endpoints to logical screen coords
   bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
+  // Short power click mapped to Confirm (SHORT_PWRBTN::PWR_CONFIRM binding).
+  bool wasPowerConfirmClick() const;
   void rememberTouchHeldTime() const;
 
   mutable bool touchHeldOverrideValid = false;
   mutable unsigned long touchHeldOverrideMs = 0;
   mutable unsigned long touchHeldOverrideAt = 0;
+  // Frame-scoped matured power click (see setPowerConfirmClickFrame).
+  bool powerConfirmClickFrame = false;
 };

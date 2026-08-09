@@ -1,5 +1,6 @@
 #include "MappedInputManager.h"
 
+#include <BoardConfig.h>
 #include <FreeInkUICore.h>
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
@@ -297,13 +298,35 @@ bool MappedInputManager::wasLightPanelGesture() const {
   return Frontlight.present() && wasTopEdgeDownSwipe();
 }
 
+// Short power click acting as the logical Confirm button (the PWR_CONFIRM
+// short-power binding): the no-touch path into menus and lists when touch
+// reader controls are off. Only the release edge exists for a click (a HOLD
+// goes to sleep in main.cpp before any release fires), so the click reports
+// on both the pressed and released edges below and never on isPressed —
+// hold-to-act consumers (delete prompts) stay physical-Confirm only.
+bool MappedInputManager::wasPowerConfirmClick() const {
+  if (SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM) return false;
+  // The X4 Pro's power button also carries the double-click frontlight toggle,
+  // so a raw release cannot fire Confirm immediately: the first click of a
+  // double would open the menu before the second click toggled the light.
+  // main.cpp's click tracker disambiguates and feeds the matured single click
+  // in via setPowerConfirmClickFrame once the double-click window passes.
+  if (BoardConfig::isX4Pro()) return powerConfirmClickFrame;
+  // The held-time gate drops the release of a long hold that did not reach the
+  // sleep path (e.g. the power-on hold carried into the first frames after
+  // wake); a genuine click is always shorter than the sleep threshold.
+  return gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() <= SETTINGS.getPowerButtonDuration();
+}
+
 bool MappedInputManager::wasPressed(const Button button) const {
   if (button == Button::Back && wasBackGesture()) return true;
+  if (button == Button::Confirm && wasPowerConfirmClick()) return true;
   return mapButton(button, &HalGPIO::wasPressed);
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
   if (button == Button::Back && wasBackGesture()) return true;
+  if (button == Button::Confirm && wasPowerConfirmClick()) return true;
   return mapButton(button, &HalGPIO::wasReleased);
 }
 

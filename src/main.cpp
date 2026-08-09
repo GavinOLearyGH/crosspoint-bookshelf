@@ -707,6 +707,17 @@ void loop() {
     return;
   }
 
+  // PWR_CONFIRM on the X4 Pro: the power button also carries the double-click
+  // frontlight toggle above, so a single click only becomes a Confirm press
+  // once the double-click window passes with no second click. The flag is
+  // frame-scoped: true for exactly the frame where the click matures.
+  mappedInputManager.setPowerConfirmClickFrame(false);
+  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM && BoardConfig::isX4Pro() &&
+      lastX4ProPowerClickAt != 0 && millis() - lastX4ProPowerClickAt > X4PRO_POWER_DOUBLE_CLICK_MS) {
+    lastX4ProPowerClickAt = 0;
+    mappedInputManager.setPowerConfirmClickFrame(true);
+  }
+
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
   if (sleepTimeoutMs > 0 && millis() - lastActivityTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);

@@ -124,9 +124,7 @@ inline TouchPageTurn detectTouchPageTurn(GfxRenderer& renderer, const MappedInpu
 
 // Tap in the middle third of the screen: the tap path into the reader menu on
 // every touch board. The page-turn tap zones are the outer thirds, so the
-// middle is free in tap mode; in swipe mode and with touch controls Off a tap
-// is otherwise unused. Not gated on SETTINGS.touchReaderControls for the same
-// reason as the edge gesture below.
+// middle is free in tap mode.
 inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
   if (!input.hasTouch()) return false;
   int x = 0;
@@ -139,10 +137,12 @@ inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager
 // Reader menu opens on the menu edge-swipe or a middle-third tap. On home-key
 // boards a long press of the capacitive key runs the user-selected long-press
 // function instead (SETTINGS.longPressMenuFunction), not the menu.
-// Deliberately NOT gated on SETTINGS.touchReaderControls: that setting governs
-// page-turn input (Off/Tap/Swipe); the menu gesture must survive "Off" or a
-// buttonless board loses its only path into the reader menu.
+// With touch reader controls Off the reading surface ignores touch entirely,
+// menu included, so a stray brush of the screen can't open it; the menu stays
+// reachable via Confirm — the front button, a short power click bound to
+// Confirm (SHORT_PWRBTN::PWR_CONFIRM), or the home-key long-press function.
 inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!SETTINGS.touchReaderControls) return false;
   return (input.hasTouch() && input.wasMenuGesture()) || isTouchMenuTap(renderer, input);
 }
 
