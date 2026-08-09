@@ -1654,7 +1654,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // Combining drivers (SSD1683) defer the BW base so the gray planes join it
   // in one waveform; a separate BW refresh first would make the gray pass
   // re-drive the whole text (visible flash).
-  const bool combinedGrayscale = tiledGrayscale && renderer.combinesGrayscaleBase() && !pageHasImages;
+  // Combining panels (SSD1683) stash the BW base and commit it together with
+  // the gray planes in ONE activation. Image pages ride this too: the #1011
+  // washout rationale below only applies to a *separate* physical BW refresh
+  // before the gray pass — here the gray activation IS the base refresh, so
+  // there is no pre-set particle state for the LUT to fight. Collapses an image
+  // page from two waveforms (BW base + gray) to one, matching stock's single
+  // gray_full. Non-combining panels (X4/SSD1677) keep the two-refresh path.
+  const bool combinedGrayscale = tiledGrayscale && renderer.combinesGrayscaleBase();
   // Whole-plane buffering only pays when the BW refresh genuinely runs async
   // underneath it; on blocking panels (X3) it would just spend ~50 KB for the
   // identical serial timing. Image pages take the blocking double-FAST path
@@ -1681,26 +1688,24 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   renderStatusBar();
   const auto tBwRender = millis();
 
-  if (pageHasImages) {
-    // Single FAST refresh with the image included, straight into the gray pass.
-    // FAST (not HALF) because HALF sets particles too firmly for the grayscale
-    // LUT to adjust (#1011). If large light-gray images wash out, the fix to
-    // restore is #957's prep: blank the image bounding box, FAST, re-render,
-    // FAST again, so the region reaches the gray pass from a uniform white.
-    // Image pages intentionally bypass the regular refresh cadence; preserve a
-    // pending clean base (silent restart / manual refresh) before the pipeline.
-    renderer.displayBuffer(cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
-    // The image's own page is handled above and doesn't count toward the full
-    // refresh cadence. But the grayscale pass below leaves gray charge in the
-    // image region that a plain fast diff on the *next* page can't clear, so
-    // text there ghosts gray (#2190). Force the next ordinary page onto the
-    // HALF ghost-cleanup path, which drives every pixel to its target
-    // regardless of residue.
-    pagesUntilFullRefresh = 1;
-  } else if (combinedGrayscale) {
-    // Deferred base: stash the BW target; the gray strips below join it in a
-    // single activation at displayGrayBuffer().
+  if (combinedGrayscale) {
+    // Deferred base: stash the BW target (text + image); the gray strips below
+    // join it in a single activation at displayGrayBuffer(). One waveform for
+    // both text and image pages on combining panels.
     ReaderUtils::displayGrayscaleBaseWithRefreshCycle(renderer, pagesUntilFullRefresh);
+    // The gray pass leaves gray charge in the image region that a plain fast
+    // diff on the *next* page can't clear (#2190); force the next ordinary page
+    // onto the HALF ghost-cleanup path.
+    if (pageHasImages) pagesUntilFullRefresh = 1;
+  } else if (pageHasImages) {
+    // Non-combining panels (X4/SSD1677): a separate BW base refresh must precede
+    // the gray pass. FAST (not HALF) because HALF sets particles too firmly for
+    // the grayscale LUT to adjust (#1011). If large light-gray images wash out,
+    // the fix to restore is #957's prep: blank the image bounding box, FAST,
+    // re-render, FAST again, so the region reaches the gray pass from uniform
+    // white. Preserve a pending clean base (silent restart / manual refresh).
+    renderer.displayBuffer(cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+    pagesUntilFullRefresh = 1;  // next-page HALF ghost cleanup (#2190)
   } else {
     // Async form: start the waveform and return so the grayscale plane rendering
     // below overlaps the panel's refresh time instead of following it.
