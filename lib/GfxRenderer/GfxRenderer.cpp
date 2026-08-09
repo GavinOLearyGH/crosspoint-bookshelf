@@ -2227,7 +2227,7 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {
   // Board truth: the bezel insets live in the active profile (panel-native
   // portrait frame); this only rotates them into the current orientation.
-  const ViewableInsets& vi = BoardConfig::ACTIVE.viewableInsets;
+  const BoardConfig::ViewableInsets& vi = BoardConfig::ACTIVE.viewableInsets;
   switch (orientation) {
     case Portrait:
       *outTop = vi.top;
