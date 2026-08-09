@@ -3,6 +3,11 @@
 #include <HalGPIO.h>
 
 class GfxRenderer;
+namespace freeink {
+namespace ui {
+enum class ScreenEdge : uint8_t;
+}
+}  // namespace freeink
 
 class MappedInputManager {
  public:
@@ -57,10 +62,6 @@ class MappedInputManager {
   // off-target so FreeInkUI routing clears its pressed-element state.
   bool wasScreenTouchReleased() const;
   bool wasTapInRect(int x, int y, int width, int height) const;
-  bool wasListItemTapped(int& index, int itemCount, int selectedIndex, int listTop, int listHeight,
-                         bool hasSubtitle) const;
-  bool wasListItemTouchedDown(int& index, int itemCount, int selectedIndex, int listTop, int listHeight,
-                              bool hasSubtitle) const;
 
   // Combined touch interaction for a band of equal rows with caller-supplied
   // geometry — the shared hit-test for lists the theme helpers above do not
@@ -123,12 +124,13 @@ class MappedInputManager {
   Button mapScreenDirection(Button button) const;
   Labels mapFrontLabels(const char* back, const char* confirm, const char* left, const char* right) const;
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
+  // SDK edge classification (fui::edgeSwipe) + the shared decode/held-time
+  // bookkeeping; the wrappers below give each edge its board meaning.
+  bool wasEdgeSwipe(freeink::ui::ScreenEdge edge) const;
   bool wasTopEdgeDownSwipe() const;
   bool wasBottomEdgeUpSwipe() const;
   // Fetch the pending swipe (if any) and map both endpoints to logical screen coords
   bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
-  bool listItemFromPoint(int x, int y, int& index, int itemCount, int selectedIndex, int listTop, int listHeight,
-                         bool hasSubtitle) const;
   void rememberTouchHeldTime() const;
 
   mutable bool touchHeldOverrideValid = false;

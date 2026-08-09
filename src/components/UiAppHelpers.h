@@ -127,10 +127,28 @@ inline int followListSelection(const int selectedIndex, const int topIndex, cons
       static_cast<uint16_t>(visibleRows > 0 ? visibleRows : 1), static_cast<uint16_t>(count)));
 }
 
-inline freeink::ui::InputSnapshot touchSnapshotFrom(const MappedInputManager& mappedInput) {
-  freeink::ui::InputSnapshot snap{};
+// withLongPress: the SDK touch classifier fires the long-press WHILE the
+// finger is still down (matching the physical-button hold-to-act feel) and
+// suppresses the remainder of the contact, so the finger lift can't also
+// tap-dismiss the popup the long-press opens. Delivered as a touchReleased +
+// longPress snapshot at the contact point; only rows masked InputLongPress
+// receive it. Mirrors the SDK's long-press-aware fui::snapshotFrom, but maps
+// coordinates through the renderer's LIVE orientation (the reader rotates at
+// runtime), which the DeviceContext-based SDK adapter does not track.
+inline freeink::ui::InputSnapshot touchSnapshotFrom(const MappedInputManager& mappedInput,
+                                                    const bool withLongPress = false) {
   int tx = 0;
   int ty = 0;
+  if (withLongPress && mappedInput.wasScreenLongPress(tx, ty)) {
+    freeink::ui::InputSnapshot snap{};
+    snap.touchReleased = true;
+    snap.longPress = true;
+    snap.touchX = static_cast<int16_t>(tx);
+    snap.touchY = static_cast<int16_t>(ty);
+    return snap;
+  }
+
+  freeink::ui::InputSnapshot snap{};
   // Live contact position: only InputDrag-masked elements (sliders) react, so
   // carrying it in every snapshot is free for ordinary screens.
   if (mappedInput.isScreenTouchHeld(tx, ty)) {
@@ -154,30 +172,3 @@ inline freeink::ui::InputSnapshot touchSnapshotFrom(const MappedInputManager& ma
   }
   return snap;
 }
-
-// Long-press-aware snapshot builder: the SDK touch classifier fires the
-// long-press WHILE the finger is still down (matching the physical-button
-// hold-to-act feel) and suppresses the remainder of the contact, so the finger
-// lift can't also tap-dismiss the popup the long-press opens. Feed this each
-// loop in place of touchSnapshotFrom() and route the returned snapshot; only
-// rows masked InputLongPress receive the event. Non-held frames delegate to
-// touchSnapshotFrom() unchanged.
-class TouchLongPressRouter {
- public:
-  freeink::ui::InputSnapshot snapshot(const MappedInputManager& mappedInput) {
-    int x = 0;
-    int y = 0;
-    if (mappedInput.wasScreenLongPress(x, y)) {
-      // Dispatch as a release at the contact point; routing matches it against
-      // InputLongPress.
-      freeink::ui::InputSnapshot snap{};
-      snap.touchReleased = true;
-      snap.longPress = true;
-      snap.touchX = static_cast<int16_t>(x);
-      snap.touchY = static_cast<int16_t>(y);
-      return snap;
-    }
-
-    return touchSnapshotFrom(mappedInput);
-  }
-};

@@ -64,8 +64,7 @@ bool UiListActivity::routeTouch() {
   // Touch goes through the FreeInkApp: render() registered the row hit rects;
   // route the snapshot and let the action trampoline dispatch.
   if (!uiReady) return false;
-  const fui::InputSnapshot snap =
-      wantsTouchLongPress ? TouchLongPressRouter{}.snapshot(mappedInput) : touchSnapshotFrom(mappedInput);
+  const fui::InputSnapshot snap = touchSnapshotFrom(mappedInput, wantsTouchLongPress);
   if (!snap.touchPressed && !snap.touchReleased) return false;
   const auto event = app.route(snap);
   // No pressed-state repaint: the render it triggers would drop a slow tap's

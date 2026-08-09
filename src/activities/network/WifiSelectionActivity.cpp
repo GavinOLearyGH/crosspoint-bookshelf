@@ -758,9 +758,10 @@ void WifiSelectionActivity::loop() {
     }
 
     // Touch goes through the FreeInkApp: render() registered the row hit
-    // rects; route the snapshot and let onRowEvent dispatch.
+    // rects; route the snapshot and let onRowEvent dispatch. Long-press on a
+    // network row fires "forget" while the finger is down.
     if (uiReady) {
-      const fui::InputSnapshot snap = longPressTouch.snapshot(mappedInput);
+      const fui::InputSnapshot snap = touchSnapshotFrom(mappedInput, /*withLongPress=*/true);
       if (snap.touchPressed || snap.touchReleased) {
         const auto event = app.route(snap);
         if (app.invalidated()) requestUpdate();
