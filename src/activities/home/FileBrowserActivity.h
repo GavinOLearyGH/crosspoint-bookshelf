@@ -1,35 +1,19 @@
 #pragma once
 
-#include <FreeInkApp.h>
-#include <FreeInkUIGfxRenderer.h>
-
-#include <atomic>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "RecentBooksStore.h"
-#include "activities/Activity.h"
-#include "components/UiAppHelpers.h"
-#include "util/ButtonNavigator.h"
+#include "activities/UiListActivity.h"
 
-class FileBrowserActivity final : public Activity {
+class FileBrowserActivity final : public UiListActivity {
  public:
   // Books = standard reader browser; PickFirmware = filter to .bin only and return path via ActivityResult.
   enum class Mode { Books, PickFirmware };
 
  private:
-  // FreeInkApp hosts the file list (themed rows, icons, touch routing); the
-  // header stays on GUI.drawHeader for the battery indicator.
-  using UiApp = freeink::ui::FreeInkApp<20, 4>;
-
   // Deletion
   bool removeDirFile(const std::string& fullPath);
-
-  ButtonNavigator buttonNavigator;
-
-  size_t selectorIndex = 0;
 
   bool lockLongPressBack = false;
   // True when this activity was entered while Confirm was already held; we must swallow the next
@@ -43,19 +27,18 @@ class FileBrowserActivity final : public Activity {
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
 
-  freeink::ui::GfxRendererTarget uiTarget;  // must precede `app`: the app holds a reference to it
-  UiApp app;
-  // render() rebuilds the app's interaction table; loop() only routes touch
-  // snapshots against it while this is true (the two run on different tasks).
-  std::atomic<bool> uiReady{false};
-  // Detects a hold on a file row and fires "delete" while the finger is down.
-  TouchLongPressRouter longPressTouch;
-  int visibleRows = 1;  // rows per page at the current scale; set by the screen builder
-  int topIndex = 0;     // viewport scroll position, decoupled from the selection
-
-  static void listScreen(UiApp::ScreenType& screen, void* user);
-  static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
-  void buildListScreen(UiApp::ScreenType& screen);
+  int listCount() const override { return static_cast<int>(files.size()); }
+  void buildScreen(UiScreen& screen) override;
+  void activateIndex(int index) override;
+  void onRowLongPress(int index) override;
+  // Long-press BACK goes to root; short Back goes up a directory (home/cancel at
+  // root), and Confirm activates on RELEASE (a hold is "delete").
+  bool handleCustomInput() override;
+  bool handleButtons() override;
+  // Header shows the current folder name (battery indicator via GUI.drawHeader);
+  // footer labels depend on path depth and picker mode.
+  void drawChrome() override;
+  void drawFooter() override;
   // forceDelete routes the touch long-press to the delete branch; button
   // navigation leaves it false and relies on getHeldTime() instead.
   void activateSelected(bool forceDelete = false);
@@ -69,6 +52,4 @@ class FileBrowserActivity final : public Activity {
                                Mode mode = Mode::Books);
   void onEnter() override;
   void onExit() override;
-  void loop() override;
-  void render(RenderLock&&) override;
 };

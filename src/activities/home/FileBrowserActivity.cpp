@@ -12,7 +12,6 @@
 #include "MappedInputManager.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
-#include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
@@ -22,7 +21,6 @@ namespace fui = freeink::ui;
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 500;
-constexpr fui::ActionId ACTION_ROW = 1;
 }  // namespace
 
 std::string getFileName(std::string filename);
@@ -30,11 +28,9 @@ std::string getFileExtension(const std::string& filename);
 
 FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                          std::string initialPath, const Mode mode)
-    : Activity("FileBrowser", renderer, mappedInput),
+    : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)),
-      uiTarget(makeUiTarget(renderer)),
-      app(uiTarget, uiTarget.deviceContext()) {}
+      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
 
 void FileBrowserActivity::loadFiles() {
   files.clear();
@@ -80,15 +76,13 @@ void FileBrowserActivity::loadFiles() {
 }
 
 void FileBrowserActivity::onEnter() {
-  Activity::onEnter();
+  UiListActivity::onEnter();
 
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
     LOG_ERR("FileBrowser", "malloc failed for name buffer");
     return;
   }
-
-  selectorIndex = 0;
 
   // If Confirm was held while this activity opened (typical when launched from a menu), ignore
   // its release — otherwise we'd immediately auto-open whatever is at index 0.
@@ -107,18 +101,11 @@ void FileBrowserActivity::onEnter() {
 
     const auto pos = oldPath.find_last_of('/');
     const std::string fileName = oldPath.substr(pos + 1);
-    selectorIndex = findEntry(fileName);
+    // The first screen build pulls the viewport to it (ListNav follow-on-build).
+    nav.selected = static_cast<int>(findEntry(fileName));
   } else {
     loadFiles();
   }
-
-  uiReady = false;
-  visibleRows = 1;
-  topIndex = followListSelection(static_cast<int>(selectorIndex), 0, visibleRows, static_cast<int>(files.size()));
-  app.setTheme(uiThemeTokens(uiTarget));
-  app.on(ACTION_ROW, &FileBrowserActivity::onRowEvent, this);
-  app.setScreen(&FileBrowserActivity::listScreen, this);
-  requestUpdate();
 }
 
 void FileBrowserActivity::onExit() {
@@ -208,14 +195,20 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
   return true;
 }
 
-void FileBrowserActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
-  auto* self = static_cast<FileBrowserActivity*>(user);
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->files.size())) return;
-  self->selectorIndex = static_cast<size_t>(event.value);
+void FileBrowserActivity::activateIndex(const int index) {
+  (void)index;  // base already synced nav.selected to the tapped row
   // Activation navigates or opens; a lingering flash would gray an unrelated
   // row on the next list.
-  self->app.clearTapFlash();
-  self->activateSelected(event.longPress);
+  app.clearTapFlash();
+  activateSelected();
+}
+
+void FileBrowserActivity::onRowLongPress(const int index) {
+  (void)index;  // base already synced nav.selected to the pressed row
+  // Activation navigates or opens; a lingering flash would gray an unrelated
+  // row on the next list.
+  app.clearTapFlash();
+  activateSelected(/*forceDelete=*/true);
 }
 
 void FileBrowserActivity::activateSelected(const bool forceDelete) {
@@ -225,7 +218,7 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
   }
   if (files.empty()) return;
 
-  const std::string& entry = files[selectorIndex];
+  const std::string& entry = files[nav.selected];
   bool isDirectory = (entry.back() == '/');
 
   // Firmware picker: select file -> return path; navigate into directories normally.
@@ -257,13 +250,12 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
           LOG_DBG("FileBrowser", "Deleted successfully");
           loadFiles();
           if (files.empty()) {
-            selectorIndex = 0;
-          } else if (selectorIndex >= files.size()) {
+            nav.selected = 0;
+          } else if (nav.selected >= listCount()) {
             // Move selection to the new "last" item
-            selectorIndex = files.size() - 1;
+            nav.selected = listCount() - 1;
           }
-          topIndex = followListSelection(static_cast<int>(selectorIndex), topIndex, visibleRows,
-                                         static_cast<int>(files.size()));
+          nav.follow(listCount());
 
           requestUpdate(true);
         } else {
@@ -285,8 +277,8 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
     if (isDirectory) {
       basepath += entry.substr(0, entry.length() - 1);
       loadFiles();
-      selectorIndex = 0;
-      topIndex = 0;
+      nav.selected = 0;
+      nav.top = 0;
       requestUpdate();
     } else {
       onSelectBook(basepath + entry);
@@ -295,41 +287,31 @@ void FileBrowserActivity::activateSelected(const bool forceDelete) {
   return;
 }
 
-void FileBrowserActivity::loop() {
+bool FileBrowserActivity::handleCustomInput() {
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && mappedInput.isPressed(MappedInputManager::Button::Back) &&
       mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/" && !lockLongPressBack) {
     basepath = "/";
     loadFiles();
-    selectorIndex = 0;
-    topIndex = 0;
+    nav.selected = 0;
+    nav.top = 0;
     requestUpdate();
-    return;
+    return true;
   }
 
   if (lockLongPressBack && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     lockLongPressBack = false;
-    return;
+    return true;
   }
 
-  // Touch goes through the FreeInkApp: render() registered the row hit rects;
-  // route the snapshot and let onRowEvent dispatch.
-  if (uiReady) {
-    const fui::InputSnapshot snap = longPressTouch.snapshot(mappedInput);
-    if (snap.touchPressed || snap.touchReleased) {
-      const auto event = app.route(snap);
-      // No pressed-state repaint: the render it triggers would drop a slow
-      // tap's release inside the uiReady window (tap-to-activate needed two
-      // taps), and it costs a second e-ink refresh per tap.
-      if (app.invalidated()) requestUpdate();
-      if (event) return;  // dispatched to onRowEvent
-    }
-  }
+  return false;
+}
 
+bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     activateSelected();
-    return;
+    return true;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -344,8 +326,9 @@ void FileBrowserActivity::loop() {
 
         const auto pos = oldPath.find_last_of('/');
         const std::string dirName = oldPath.substr(pos + 1) + "/";
-        selectorIndex = findEntry(dirName);
-        topIndex = followListSelection(static_cast<int>(selectorIndex), 0, visibleRows, static_cast<int>(files.size()));
+        nav.selected = static_cast<int>(findEntry(dirName));
+        nav.top = 0;
+        nav.follow(listCount());
 
         requestUpdate();
       } else if (mode == Mode::PickFirmware) {
@@ -358,39 +341,10 @@ void FileBrowserActivity::loop() {
         onGoHome();
       }
     }
+    return true;
   }
 
-  const int listSize = static_cast<int>(files.size());
-  // Swipes scroll the viewport; the selection stays put and button navigation
-  // pulls the view back to it.
-  const auto swipe = mappedInput.wasSwipe();
-  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-    const int delta = swipe == MappedInputManager::SwipeDir::Up ? visibleRows : -visibleRows;
-    const int next = scrollListBy(topIndex, delta, visibleRows, listSize);
-    if (next != topIndex) {
-      topIndex = next;
-      requestUpdate();
-    }
-    return;
-  }
-
-  const auto moveSelection = [this, listSize](const int index) {
-    selectorIndex = static_cast<size_t>(index);
-    topIndex = followListSelection(static_cast<int>(selectorIndex), topIndex, visibleRows, listSize);
-    requestUpdate();
-  };
-  buttonNavigator.onNextRelease([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::nextIndex(static_cast<int>(selectorIndex), listSize));
-  });
-  buttonNavigator.onPreviousRelease([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::previousIndex(static_cast<int>(selectorIndex), listSize));
-  });
-  buttonNavigator.onNextContinuous([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::nextPageIndex(static_cast<int>(selectorIndex), listSize, visibleRows));
-  });
-  buttonNavigator.onPreviousContinuous([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::previousPageIndex(static_cast<int>(selectorIndex), listSize, visibleRows));
-  });
+  return false;
 }
 
 std::string getFileName(std::string filename) {
@@ -413,11 +367,7 @@ std::string getFileExtension(const std::string& filename) {
   return filename.substr(pos);
 }
 
-void FileBrowserActivity::listScreen(UiApp::ScreenType& screen, void* user) {
-  static_cast<FileBrowserActivity*>(user)->buildListScreen(screen);
-}
-
-void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
+void FileBrowserActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
@@ -479,7 +429,6 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
   fui::ListProps props;
   props.items = items.data();
   props.count = static_cast<uint16_t>(items.size());
-  props.selectedIndex = static_cast<int16_t>(selectorIndex);
   props.action = ACTION_ROW;
   // Tap opens/navigates; long-press prompts delete (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
@@ -495,16 +444,11 @@ void FileBrowserActivity::buildListScreen(UiApp::ScreenType& screen) {
   // The trailing value here is just the short extension: skip the balanced
   // 60%-band wrap cap and let both name lines run the full width before it.
   props.balanceWrappedLabelWithValue = false;
-  const auto rows = fui::listVisibleRows(screen.body(), screen.theme().rowHeight, screen.theme().listRowGap);
-  visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, static_cast<int>(files.size()));  // clamp to range
-  props.topIndex = static_cast<uint16_t>(topIndex);
+  syncListViewport(screen, props);
   screen.list(props);
 }
 
-void FileBrowserActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
+void FileBrowserActivity::drawChrome() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -515,21 +459,17 @@ void FileBrowserActivity::render(RenderLock&&) {
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
+}
 
-  uiReady = false;
-  app.render();
-  uiReady = true;
-
+void FileBrowserActivity::drawFooter() {
   const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
-  const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && files[selectorIndex].back() != '/';
+  const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && files[nav.selected].back() != '/';
   const char* confirmLabel = files.empty() ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN));
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, files.empty() ? "" : tr(STR_DIR_UP),
                                             files.empty() ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderer.displayBuffer();
 }
 
 size_t FileBrowserActivity::findEntry(const std::string& name) const {

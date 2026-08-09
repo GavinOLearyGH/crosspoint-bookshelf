@@ -8,7 +8,6 @@
 #include "../../util/BookmarkFile.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
-#include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
 
@@ -16,19 +15,16 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr int ENTER_DELETE_MODE_MS = 700;
-constexpr fui::ActionId ACTION_ROW = 1;
 }  // namespace
 
 EpubReaderBookmarksActivity::EpubReaderBookmarksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                          const std::shared_ptr<Epub>& epub, const std::string& epubPath)
-    : Activity("EpubReaderBookmarks", renderer, mappedInput),
+    : UiListActivity("EpubReaderBookmarks", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       epub(epub),
-      epubPath(epubPath),
-      uiTarget(makeUiTarget(renderer)),
-      app(uiTarget, uiTarget.deviceContext()) {}
+      epubPath(epubPath) {}
 
 void EpubReaderBookmarksActivity::onEnter() {
-  Activity::onEnter();
+  UiListActivity::onEnter();
 
   if (!epub) {
     return;
@@ -38,25 +34,13 @@ void EpubReaderBookmarksActivity::onEnter() {
     bookmarks.shrink_to_fit();
   }
   LOG_DBG("EPB", "Loaded %d bookmarks for book: %s", static_cast<int>(bookmarks.size()), epubPath.c_str());
-
-  uiReady = false;
-  visibleRows = 1;
-  topIndex = 0;
-  app.setTheme(uiThemeTokens(uiTarget));
-  app.on(ACTION_ROW, &EpubReaderBookmarksActivity::onRowEvent, this);
-  app.setScreen(&EpubReaderBookmarksActivity::listScreen, this);
-
-  // Trigger first update
-  requestUpdate();
 }
-
-void EpubReaderBookmarksActivity::onExit() { Activity::onExit(); }
 
 void EpubReaderBookmarksActivity::openSelectedBookmark() {
   if (bookmarks.empty()) {
     return;
   }
-  const auto& bookmark = bookmarks.at(selectorIndex);
+  const auto& bookmark = bookmarks.at(nav.selected);
   ProgressChangeResult result{};
   result.xpath = bookmark.xpath;
   result.percentage = bookmark.percentage;
@@ -75,115 +59,77 @@ void EpubReaderBookmarksActivity::openSelectedBookmark() {
   finish();
 }
 
-void EpubReaderBookmarksActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
-  auto* self = static_cast<EpubReaderBookmarksActivity*>(user);
-  if (self->confirmPopup.isActive()) return;
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->bookmarks.size())) return;
-  self->selectorIndex = event.value;
-  // The tapped row leaves this screen or is deleted; a lingering flash would
-  // gray an unrelated row on the next render.
-  self->app.clearTapFlash();
-  if (event.longPress) {
-    // Touch long-press asks the same Cancel/Delete confirmation as the physical
-    // hold (the popup is tap-operable), matching the file browser's long-press
-    // delete flow. Does not open the bookmark.
-    self->showDeleteConfirmation();
-    return;
-  }
-  self->openSelectedBookmark();
+void EpubReaderBookmarksActivity::activateIndex(const int index) {
+  if (confirmPopup.isActive()) return;
+  // The tapped row leaves this screen; a lingering flash would gray an
+  // unrelated row on the next render.
+  app.clearTapFlash();
+  nav.selected = index;
+  openSelectedBookmark();
 }
 
-void EpubReaderBookmarksActivity::loop() {
+void EpubReaderBookmarksActivity::onRowLongPress(const int index) {
+  if (confirmPopup.isActive()) return;
+  // The row is deleted; a lingering flash would gray an unrelated row on the
+  // next render.
+  app.clearTapFlash();
+  nav.selected = index;
+  // Touch long-press asks the same Cancel/Delete confirmation as the physical
+  // hold (the popup is tap-operable), matching the file browser's long-press
+  // delete flow. Does not open the bookmark.
+  showDeleteConfirmation();
+}
+
+bool EpubReaderBookmarksActivity::handleCustomInput() {
   // Delete confirmation popup
   if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) {
     // The popup acts on button press; if that input closed it, the trailing
     // release must be swallowed below (Back would leave the activity, Confirm
     // would open the selected bookmark).
     popupClosing = !confirmPopup.isActive();
-    return;
+    return true;
   }
   if (popupClosing) {
     if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
         mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-      return;  // closing press still held
+      return true;  // closing press still held
     }
     popupClosing = false;
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      return;  // swallow the release that closed the popup
+      return true;  // swallow the release that closed the popup
     }
   }
   if (confirmingDelete) {
     // Popup dismissed without a selection (Back button or tap outside): cancel delete
     confirmingDelete = false;
     requestUpdate();
-    return;
+    return true;
   }
+  return false;
+}
 
+bool EpubReaderBookmarksActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
     finish();
-    return;
-  }
-
-  // Touch goes through the FreeInkApp: render() registered the row hit rects;
-  // route the snapshot and let onRowEvent dispatch.
-  if (uiReady) {
-    const fui::InputSnapshot snap = longPressTouch.snapshot(mappedInput);
-    if (snap.touchPressed || snap.touchReleased) {
-      const auto event = app.route(snap);
-      // No pressed-state repaint: the render it triggers would drop a slow
-      // tap's release inside the uiReady window (tap-to-activate needed two
-      // taps), and it costs a second e-ink refresh per tap.
-      if (app.invalidated()) requestUpdate();
-      if (event) return;  // dispatched to onRowEvent
-    }
-  }
-
-  const int listSize = static_cast<int>(bookmarks.size());
-  // Swipes scroll the viewport; the selection stays put and button navigation
-  // pulls the view back to it.
-  const auto swipe = mappedInput.wasSwipe();
-  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-    const int delta = swipe == MappedInputManager::SwipeDir::Up ? visibleRows : -visibleRows;
-    const int next = scrollListBy(topIndex, delta, visibleRows, listSize);
-    if (next != topIndex) {
-      topIndex = next;
-      requestUpdate();
-    }
-    return;
+    return true;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {  // Open
     openSelectedBookmark();
-    return;
+    return true;
   }
 
   if (mappedInput.isPressed(MappedInputManager::Button::Confirm) && mappedInput.getHeldTime() > ENTER_DELETE_MODE_MS) {
+    // No pass-consumed return here: the legacy loop fell through to swipe and
+    // button navigation after arming the confirmation.
     showDeleteConfirmation();
   }
 
-  const auto moveSelection = [this, listSize](const int index) {
-    selectorIndex = index;
-    topIndex = followListSelection(selectorIndex, topIndex, visibleRows, listSize);
-    requestUpdate();
-  };
-
-  buttonNavigator.onNextRelease(
-      [this, listSize, &moveSelection] { moveSelection(ButtonNavigator::nextIndex(selectorIndex, listSize)); });
-
-  buttonNavigator.onPreviousRelease(
-      [this, listSize, &moveSelection] { moveSelection(ButtonNavigator::previousIndex(selectorIndex, listSize)); });
-
-  buttonNavigator.onNextContinuous([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::nextPageIndex(selectorIndex, listSize, visibleRows));
-  });
-
-  buttonNavigator.onPreviousContinuous([this, listSize, &moveSelection] {
-    moveSelection(ButtonNavigator::previousPageIndex(selectorIndex, listSize, visibleRows));
-  });
+  return false;
 }
 
 void EpubReaderBookmarksActivity::showDeleteConfirmation() {
@@ -203,14 +149,14 @@ void EpubReaderBookmarksActivity::showDeleteConfirmation() {
 }
 
 void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
-  bookmarks.erase(bookmarks.begin() + selectorIndex);
+  bookmarks.erase(bookmarks.begin() + nav.selected);
   if (!BookmarkFile::save(epubPath, bookmarks)) {
     LOG_ERR("EPB", "Failed to save bookmarks after delete");
   }
 
   // Move selector up if we deleted the last item
-  if (selectorIndex >= static_cast<int>(bookmarks.size()) && selectorIndex > 0) {
-    selectorIndex--;
+  if (nav.selected >= static_cast<int>(bookmarks.size()) && nav.selected > 0) {
+    nav.selected--;
   }
 
   if (bookmarks.empty()) {
@@ -221,15 +167,11 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
     return;
   }
 
-  topIndex = followListSelection(selectorIndex, topIndex, visibleRows, static_cast<int>(bookmarks.size()));
+  nav.follow(listCount());
   requestUpdate(true);
 }
 
-void EpubReaderBookmarksActivity::listScreen(UiApp::ScreenType& screen, void* user) {
-  static_cast<EpubReaderBookmarksActivity*>(user)->buildListScreen(screen);
-}
-
-void EpubReaderBookmarksActivity::buildListScreen(UiApp::ScreenType& screen) {
+void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
   // Content: the safe area minus the title band render() paints.
@@ -282,14 +224,10 @@ void EpubReaderBookmarksActivity::buildListScreen(UiApp::ScreenType& screen) {
   fui::ListProps props;
   props.items = items.data();
   props.count = static_cast<uint16_t>(items.size());
-  props.selectedIndex = static_cast<int16_t>(selectorIndex);
   props.action = ACTION_ROW;
   // Tap opens; long-press deletes (physical buttons stay in loop()).
   props.inputMask = fui::InputTouch | fui::InputLongPress;
-  const auto rows = fui::listVisibleRows(screen.body(), screen.theme().rowHeight, screen.theme().listRowGap);
-  visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, static_cast<int>(bookmarks.size()));  // clamp to range
-  props.topIndex = static_cast<uint16_t>(topIndex);
+  syncListViewport(screen, props);
   screen.list(props);
 }
 

@@ -4,15 +4,10 @@
 #include <I18n.h>
 #include <Logging.h>
 
-#include <cstring>
-
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
-#include "components/UIThemeTokens.h"
-#include "components/UiAppHelpers.h"
-#include "fontIds.h"
 
 namespace fui = freeink::ui;
 
@@ -20,34 +15,19 @@ namespace {
 // Editable fields: Name, URL, Username, Password.
 // Existing servers also show a Delete option (BASE_ITEMS + 1).
 constexpr int BASE_ITEMS = 4;
-constexpr fui::ActionId ACTION_ROW = 1;
 }  // namespace
 
 OpdsSettingsActivity::OpdsSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const int serverIndex)
-    : Activity("OpdsSettings", renderer, mappedInput),
-      serverIndex(serverIndex),
-      uiTarget(makeUiTarget(renderer)),
-      app(uiTarget, uiTarget.deviceContext()) {}
-
-void OpdsSettingsActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
-  auto* self = static_cast<OpdsSettingsActivity*>(user);
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->getMenuItemCount())) return;
-  self->selectedIndex = static_cast<size_t>(event.value);
-  // Activation opens a keyboard or leaves the screen; a lingering flash would
-  // gray an unrelated row.
-  self->app.clearTapFlash();
-  self->handleSelection();
-}
+    : UiListActivity("OpdsSettings", renderer, mappedInput), serverIndex(serverIndex) {}
 
 int OpdsSettingsActivity::getMenuItemCount() const {
   return isNewServer ? BASE_ITEMS : BASE_ITEMS + 1;  // +1 for Delete
 }
 
 void OpdsSettingsActivity::onEnter() {
-  Activity::onEnter();
+  UiListActivity::onEnter();
 
-  selectedIndex = 0;
   isNewServer = (serverIndex < 0);
   showSaveError = false;
 
@@ -63,50 +43,14 @@ void OpdsSettingsActivity::onEnter() {
       serverIndex = -1;
     }
   }
-
-  uiReady = false;
-  visibleRows = 1;
-  topIndex = 0;
-  app.setTheme(uiThemeTokens(uiTarget));
-  app.on(ACTION_ROW, &OpdsSettingsActivity::onRowEvent, this);
-  app.setScreen(&OpdsSettingsActivity::listScreen, this);
-  requestUpdate();
 }
 
-void OpdsSettingsActivity::onExit() { Activity::onExit(); }
-
-void OpdsSettingsActivity::loop() {
-  // Touch goes through the FreeInkApp: render() registered the row hit rects;
-  // route the snapshot and let onRowEvent dispatch.
-  if (uiReady) {
-    const fui::InputSnapshot snap = touchSnapshotFrom(mappedInput);
-    if (snap.touchPressed || snap.touchReleased) {
-      const auto event = app.route(snap);
-      if (app.invalidated()) requestUpdate();
-      if (event) return;  // dispatched to onRowEvent
-    }
-  }
-
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    finish();
-    return;
-  }
-
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    handleSelection();
-    return;
-  }
-
-  const int menuItems = getMenuItemCount();
-  buttonNavigator.onNext([this, menuItems] {
-    selectedIndex = (selectedIndex + 1) % menuItems;
-    requestUpdate();
-  });
-
-  buttonNavigator.onPrevious([this, menuItems] {
-    selectedIndex = (selectedIndex + menuItems - 1) % menuItems;
-    requestUpdate();
-  });
+void OpdsSettingsActivity::activateIndex(const int index) {
+  nav.selected = index;
+  // Activation opens a keyboard or leaves the screen; a lingering flash would
+  // gray an unrelated row.
+  app.clearTapFlash();
+  handleSelection();
 }
 
 bool OpdsSettingsActivity::saveServer() {
@@ -142,7 +86,7 @@ bool OpdsSettingsActivity::saveServer() {
 void OpdsSettingsActivity::handleSelection() {
   // Each field edit is saved immediately so partially configured servers
   // survive navigation and power-loss scenarios.
-  if (selectedIndex == 0) {
+  if (nav.selected == 0) {
     // Server Name
     auto handler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
@@ -155,7 +99,7 @@ void OpdsSettingsActivity::handleSelection() {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SERVER_NAME),
                                                                    editServer.name, 63, InputType::Text),
                            handler);
-  } else if (selectedIndex == 1) {
+  } else if (nav.selected == 1) {
     // Server URL
     const std::string prefillUrl = editServer.url.empty() ? "https://" : editServer.url;
     auto handler = [this](const ActivityResult& result) {
@@ -169,7 +113,7 @@ void OpdsSettingsActivity::handleSelection() {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_OPDS_SERVER_URL),
                                                                    prefillUrl, 127, InputType::Url),
                            handler);
-  } else if (selectedIndex == 2) {
+  } else if (nav.selected == 2) {
     // Username
     auto handler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
@@ -182,7 +126,7 @@ void OpdsSettingsActivity::handleSelection() {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_USERNAME),
                                                                    editServer.username, 63, InputType::Text),
                            handler);
-  } else if (selectedIndex == 3) {
+  } else if (nav.selected == 3) {
     // Password
     auto handler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
@@ -195,7 +139,7 @@ void OpdsSettingsActivity::handleSelection() {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_PASSWORD),
                                                                    editServer.password, 63, InputType::Password),
                            handler);
-  } else if (selectedIndex == 4 && !isNewServer) {
+  } else if (nav.selected == 4 && !isNewServer) {
     // Delete flow is only available for existing servers.
     if (!OPDS_STORE.removeServer(static_cast<size_t>(serverIndex))) {
       LOG_ERR("OPS", "Failed to remove OPDS server at index %d", serverIndex);
@@ -207,11 +151,7 @@ void OpdsSettingsActivity::handleSelection() {
   }
 }
 
-void OpdsSettingsActivity::listScreen(UiApp::ScreenType& screen, void* user) {
-  static_cast<OpdsSettingsActivity*>(user)->buildListScreen(screen);
-}
-
-void OpdsSettingsActivity::buildListScreen(UiApp::ScreenType& screen) {
+void OpdsSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
@@ -246,39 +186,22 @@ void OpdsSettingsActivity::buildListScreen(UiApp::ScreenType& screen) {
   fui::ListProps props;
   props.items = items.data();
   props.count = static_cast<uint16_t>(items.size());
-  props.selectedIndex = static_cast<int16_t>(selectedIndex);
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
-  const auto rows = fui::listVisibleRows(screen.body(), screen.theme().rowHeight, screen.theme().listRowGap);
-  visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, menuItems);  // clamp to range
-  props.topIndex = static_cast<uint16_t>(topIndex);
+  syncListViewport(screen, props);
   screen.list(props);
 }
 
-void OpdsSettingsActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
+const char* OpdsSettingsActivity::headerTitle() const {
   // Reuse STR_OPDS_BROWSER as the "edit existing server" title.
   // New server creation uses STR_ADD_SERVER.
-  const char* header = isNewServer ? tr(STR_ADD_SERVER) : tr(STR_OPDS_BROWSER);
-  // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
-  // indicator; the rest of the screen renders through the app.
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header);
+  return isNewServer ? tr(STR_ADD_SERVER) : tr(STR_OPDS_BROWSER);
+}
 
-  uiReady = false;
-  app.render();
-  uiReady = true;
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
+void OpdsSettingsActivity::drawFooter() {
+  UiListActivity::drawFooter();
   if (showSaveError) {
     GUI.drawPopup(renderer, tr(STR_ERROR_GENERAL_FAILURE));
   }
-
-  renderer.displayBuffer();
 }

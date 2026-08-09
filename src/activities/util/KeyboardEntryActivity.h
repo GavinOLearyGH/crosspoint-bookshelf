@@ -54,10 +54,8 @@ class KeyboardEntryActivity : public Activity {
   // keys, so 48 leaves headroom.
   freeink::ui::InteractionBuffer<48> interactions;
 
-  // GPIO selection over the current layout grid (row/col in layout terms;
-  // the bottom action row is just the last row).
-  int selRow = 0;
-  int selCol = 0;
+  // GPIO selection over the current irregular layout grid.
+  freeink::ui::KeyboardNavigator keyboardNavigator;
 
   bool confirmHeld = false;
   bool confirmLongHandled = false;
@@ -80,9 +78,11 @@ class KeyboardEntryActivity : public Activity {
 
   // loop() runs on the main task while render() rebuilds the interaction
   // table on the render task; routing against a half-built table would read
-  // torn entries, so taps are dropped during the rebuild window. atomic (not
-  // volatile) so the flag also orders the table writes on dual-core targets.
+  // torn entries. atomic (not volatile) also orders the table writes on
+  // dual-core targets. Completed taps are queued below until routing is safe.
   std::atomic<bool> interactionsReady{false};
+
+  freeink::ui::TouchTapQueue<16> pendingTouchTaps;
 
   int delPressCount = 0;
   bool hintVisible = false;
@@ -101,12 +101,6 @@ class KeyboardEntryActivity : public Activity {
   int lineBreakEnd(std::string& s, int start, int maxWidth) const;
 
   const freeink::ui::KeyboardLayout& currentLayout() const;
-  const freeink::ui::KeyboardKey* selectedKey() const;
-  int selectedLogicalIndex() const;
-  void clampSelection();
-  void moveSelectionRow(int delta);
-  void moveSelectionCol(int delta);
-  bool syncSelectionToValue(int16_t value);
   // Handles one key activation (by stable key id). Returns true when the
   // screen needs a repaint; OK/cancel finish the activity instead.
   bool activateValue(int16_t value, bool longPress);
@@ -114,8 +108,6 @@ class KeyboardEntryActivity : public Activity {
 
   void insertUtf8(const char* out);
   bool backspaceUtf8();
-  static size_t utf8Prev(const std::string& s, size_t pos);
-  static size_t utf8Next(const std::string& s, size_t pos);
 
   freeink::ui::Rect keyboardRect() const;
 

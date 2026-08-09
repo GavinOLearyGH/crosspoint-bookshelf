@@ -6,29 +6,20 @@
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
-#include "components/UIThemeTokens.h"
-#include "components/UiAppHelpers.h"
-#include "fontIds.h"
 
 namespace fui = freeink::ui;
-
-namespace {
-constexpr fui::ActionId ACTION_ROW = 1;
-}  // namespace
 
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
                                                const bool hasFootnotes, const bool hasBookmarks)
-    : Activity("EpubReaderMenu", renderer, mappedInput),
+    : UiListActivity("EpubReaderMenu", renderer, mappedInput),
       menuItems(buildMenuItems(hasFootnotes, hasBookmarks)),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
       totalPages(totalPages),
-      bookProgressPercent(bookProgressPercent),
-      uiTarget(makeUiTarget(renderer)),
-      app(uiTarget, uiTarget.deviceContext()) {}
+      bookProgressPercent(bookProgressPercent) {}
 
 std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuItems(bool hasFootnotes,
                                                                                      bool hasBookmarks) {
@@ -55,18 +46,6 @@ std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuI
   return items;
 }
 
-void EpubReaderMenuActivity::onEnter() {
-  Activity::onEnter();
-  uiReady = false;
-  visibleRows = 1;
-  app.setTheme(uiThemeTokens(uiTarget));
-  app.on(ACTION_ROW, &EpubReaderMenuActivity::onRowEvent, this);
-  app.setScreen(&EpubReaderMenuActivity::menuScreen, this);
-  requestUpdate();
-}
-
-void EpubReaderMenuActivity::onExit() { Activity::onExit(); }
-
 void EpubReaderMenuActivity::closeCancelled() {
   ActivityResult result;
   result.isCancelled = true;
@@ -80,8 +59,14 @@ bool EpubReaderMenuActivity::handleHomeGesture() {
   return true;
 }
 
-void EpubReaderMenuActivity::activateSelected() {
-  const auto selectedAction = menuItems[selectedIndex].action;
+void EpubReaderMenuActivity::activateIndex(const int index) {
+  if (optionPopup.isActive()) return;
+  // The activated row leaves this screen (popup or finish); a lingering flash
+  // would gray an unrelated element on the next render.
+  app.clearTapFlash();
+  nav.selected = index;
+
+  const auto selectedAction = menuItems[index].action;
   if (selectedAction == MenuAction::ROTATE_SCREEN) {
     optionPopup.show(StrId::STR_ORIENTATION, orientationLabels.data(), static_cast<int>(orientationLabels.size()),
                      pendingOrientation, [this](int idx) {
@@ -111,40 +96,32 @@ void EpubReaderMenuActivity::activateSelected() {
   finish();
 }
 
-void EpubReaderMenuActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
-  auto* self = static_cast<EpubReaderMenuActivity*>(user);
-  if (self->optionPopup.isActive()) return;
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->menuItems.size())) return;
-  self->selectedIndex = event.value;
-  // The tapped row leaves this screen (popup or finish); a lingering flash
-  // would gray an unrelated element on the next render.
-  self->app.clearTapFlash();
-  self->activateSelected();
-}
-
-void EpubReaderMenuActivity::loop() {
+bool EpubReaderMenuActivity::handleCustomInput() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) {
     // The popup acts on button press; if that input closed it, the trailing
     // release must be swallowed below (Back would close the menu, Confirm
     // would re-activate the selected item).
     popupClosing = !optionPopup.isActive();
-    return;
+    return true;
   }
   if (popupClosing) {
     if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
         mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-      return;  // closing press still held
+      return true;  // closing press still held
     }
     popupClosing = false;
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      return;  // swallow the release that closed the popup
+      return true;  // swallow the release that closed the popup
     }
   }
+  return false;
+}
 
+bool EpubReaderMenuActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     closeCancelled();
-    return;
+    return true;
   }
 
   // On home-key boards (X4 Pro) the bottom-edge up-swipe is the reader-menu
@@ -155,59 +132,18 @@ void EpubReaderMenuActivity::loop() {
   // keep the scroll behavior here.
   if (mappedInput.hasHomeKey() && mappedInput.wasMenuGesture()) {
     closeCancelled();
-    return;
+    return true;
   }
-
-  // Touch goes through the FreeInkApp: render() registered the row hit rects;
-  // route the snapshot and let onRowEvent dispatch.
-  if (uiReady) {
-    const fui::InputSnapshot snap = touchSnapshotFrom(mappedInput);
-    if (snap.touchPressed || snap.touchReleased) {
-      const auto event = app.route(snap);
-      // No pressed-state repaint: the render it triggers would drop a slow
-      // tap's release inside the uiReady window (tap-to-activate needed two
-      // taps), and it costs a second e-ink refresh per tap.
-      if (app.invalidated()) requestUpdate();
-      if (event) return;  // dispatched to onRowEvent
-    }
-  }
-
-  // Swipes scroll the viewport; the selection stays put (it may scroll
-  // off-screen) and button navigation pulls the view back to it.
-  const auto swipe = mappedInput.wasSwipe();
-  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-    const int delta = swipe == MappedInputManager::SwipeDir::Up ? visibleRows : -visibleRows;
-    const int next = scrollListBy(topIndex, delta, visibleRows, static_cast<int>(menuItems.size()));
-    if (next != topIndex) {
-      topIndex = next;
-      requestUpdate();
-    }
-    return;
-  }
-
-  const auto moveSelection = [this](const int index) {
-    selectedIndex = index;
-    topIndex = followListSelection(selectedIndex, topIndex, visibleRows, static_cast<int>(menuItems.size()));
-    requestUpdate();
-  };
-  buttonNavigator.onNext([this, &moveSelection] {
-    moveSelection(ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(menuItems.size())));
-  });
-  buttonNavigator.onPrevious([this, &moveSelection] {
-    moveSelection(ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(menuItems.size())));
-  });
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    activateSelected();
-    return;
+    activateIndex(nav.selected);
+    return true;
   }
+
+  return false;
 }
 
-void EpubReaderMenuActivity::menuScreen(UiApp::ScreenType& screen, void* user) {
-  static_cast<EpubReaderMenuActivity*>(user)->buildMenuScreen(screen);
-}
-
-void EpubReaderMenuActivity::buildMenuScreen(UiApp::ScreenType& screen) {
+void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
   // Content: the safe area minus the header band GUI.drawHeader paints.
@@ -247,36 +183,33 @@ void EpubReaderMenuActivity::buildMenuScreen(UiApp::ScreenType& screen) {
   fui::ListProps props;
   props.items = items.data();
   props.count = static_cast<uint16_t>(items.size());
-  props.selectedIndex = static_cast<int16_t>(selectedIndex);
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge
-  const auto rows = fui::listVisibleRows(screen.body(), screen.theme().rowHeight, screen.theme().listRowGap);
-  visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, static_cast<int>(menuItems.size()));  // clamp to range
-  props.topIndex = static_cast<uint16_t>(topIndex);
+  syncListViewport(screen, props);
   screen.list(props);
+}
+
+void EpubReaderMenuActivity::drawChrome() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+
+  // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
+  // indicator; the rest of the screen renders through the app.
+  GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
+                 title.c_str());
 }
 
 void EpubReaderMenuActivity::render(RenderLock&&) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
   renderer.clearScreen();
-
-  auto metrics = UITheme::getInstance().getMetrics();
-  Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-
-  // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
-  // indicator; the rest of the screen renders through the app.
-  GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
-                 title.c_str());
+  drawChrome();
 
   uiReady = false;
   app.render();
   uiReady = true;
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
+  drawFooter();
   renderer.displayBuffer();
 }

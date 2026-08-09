@@ -13,16 +13,11 @@
 #include "activities/browser/OpdsBookBrowserActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
-#include "components/UIThemeTokens.h"
-#include "components/UiAppHelpers.h"
-#include "fontIds.h"
 #include "util/OpdsFilename.h"
 
 namespace fui = freeink::ui;
 
 namespace {
-constexpr fui::ActionId ACTION_ROW = 1;
-
 // Normalizes a user-typed folder: trims spaces, "" => SD root, otherwise a
 // single leading '/' and no trailing '/'. Cold path (runs once per edit).
 std::string normalizeFolder(std::string v) {
@@ -60,94 +55,37 @@ int OpdsServerListActivity::getItemCount() const {
 
 OpdsServerListActivity::OpdsServerListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const bool pickerMode)
-    : Activity("OpdsServerList", renderer, mappedInput),
-      pickerMode(pickerMode),
-      uiTarget(makeUiTarget(renderer)),
-      app(uiTarget, uiTarget.deviceContext()) {}
-
-void OpdsServerListActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
-  auto* self = static_cast<OpdsServerListActivity*>(user);
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->getItemCount())) return;
-  self->selectedIndex = event.value;
-  // Activation opens an editor/browser or repaints a new value; a lingering
-  // flash would gray an unrelated row.
-  self->app.clearTapFlash();
-  self->handleSelection();
-  self->requestUpdate();
-}
+    : UiListActivity("OpdsServerList", renderer, mappedInput), pickerMode(pickerMode) {}
 
 void OpdsServerListActivity::onEnter() {
-  Activity::onEnter();
+  UiListActivity::onEnter();
 
   // Reload from disk in case servers were added/removed by a subactivity or the web UI
   OPDS_STORE.loadFromFile();
-  selectedIndex = 0;
-  uiReady = false;
-  visibleRows = 1;
-  topIndex = 0;
-  app.setTheme(uiThemeTokens(uiTarget));
-  app.on(ACTION_ROW, &OpdsServerListActivity::onRowEvent, this);
-  app.setScreen(&OpdsServerListActivity::listScreen, this);
-  requestUpdate();
+  nav.selected = 0;
 }
 
-void OpdsServerListActivity::onExit() { Activity::onExit(); }
+bool OpdsServerListActivity::handleCustomInput() {
+  return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+}
 
-void OpdsServerListActivity::loop() {
-  if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
-
-  auto activateSelected = [this] { handleSelection(); };
-
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (pickerMode) {
-      activityManager.goHome(HomeMenuItem::OPDS_BROWSER);
-    } else {
-      finish();
-    }
-    return;
+void OpdsServerListActivity::onBackButton() {
+  if (pickerMode) {
+    activityManager.goHome(HomeMenuItem::OPDS_BROWSER);
+  } else {
+    finish();
   }
+}
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    activateSelected();
-    return;
-  }
+const char* OpdsServerListActivity::headerTitle() const { return tr(STR_OPDS_SERVERS); }
 
-  // Touch goes through the FreeInkApp: render() registered the row hit rects;
-  // route the snapshot and let onRowEvent dispatch.
-  if (uiReady) {
-    const fui::InputSnapshot snap = touchSnapshotFrom(mappedInput);
-    if (snap.touchPressed || snap.touchReleased) {
-      const auto event = app.route(snap);
-      if (app.invalidated()) requestUpdate();
-      if (event) return;  // dispatched to onRowEvent
-    }
-  }
-
-  const int itemCount = getItemCount();
-  if (itemCount > 0) {
-    // Swipes scroll the viewport; the selection stays put and button
-    // navigation pulls the view back to it.
-    const auto swipe = mappedInput.wasSwipe();
-    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-      const int delta = swipe == MappedInputManager::SwipeDir::Up ? visibleRows : -visibleRows;
-      const int next = scrollListBy(topIndex, delta, visibleRows, itemCount);
-      if (next != topIndex) {
-        topIndex = next;
-        requestUpdate();
-      }
-      return;
-    }
-
-    const auto moveSelection = [this, itemCount](const int index) {
-      selectedIndex = index;
-      topIndex = followListSelection(selectedIndex, topIndex, visibleRows, itemCount);
-      requestUpdate();
-    };
-    buttonNavigator.onNext(
-        [this, itemCount, &moveSelection] { moveSelection(ButtonNavigator::nextIndex(selectedIndex, itemCount)); });
-    buttonNavigator.onPrevious(
-        [this, itemCount, &moveSelection] { moveSelection(ButtonNavigator::previousIndex(selectedIndex, itemCount)); });
-  }
+void OpdsServerListActivity::activateIndex(const int index) {
+  nav.selected = index;
+  // Activation opens an editor/browser or repaints a new value; a lingering
+  // flash would gray an unrelated row.
+  app.clearTapFlash();
+  handleSelection();
+  requestUpdate();
 }
 
 void OpdsServerListActivity::handleSelection() {
@@ -155,8 +93,8 @@ void OpdsServerListActivity::handleSelection() {
 
   if (pickerMode) {
     // Picker mode: selecting a server navigates to the OPDS browser
-    if (selectedIndex < serverCount) {
-      const auto* server = OPDS_STORE.getServer(static_cast<size_t>(selectedIndex));
+    if (nav.selected < serverCount) {
+      const auto* server = OPDS_STORE.getServer(static_cast<size_t>(nav.selected));
       if (server) {
         activityManager.replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, *server));
       }
@@ -165,7 +103,7 @@ void OpdsServerListActivity::handleSelection() {
   }
 
   // Index layout: [servers 0..serverCount-1], [Add Server], [Download folder], [Filename format].
-  if (selectedIndex == serverCount + 1) {
+  if (nav.selected == serverCount + 1) {
     auto folderHandler = [this](const ActivityResult& result) {
       if (!result.isCancelled) {
         const auto& kb = std::get<KeyboardResult>(result.data);
@@ -184,7 +122,7 @@ void OpdsServerListActivity::handleSelection() {
   }
 
   // "Filename format": picker like every other multi-option setting.
-  if (selectedIndex == serverCount + 2) {
+  if (nav.selected == serverCount + 2) {
     static const StrId formatLabels[] = {StrId::STR_FMT_AUTHOR_TITLE, StrId::STR_FMT_TITLE_AUTHOR,
                                          StrId::STR_FMT_TITLE};
     optionPopup.show(StrId::STR_OPDS_FILENAME_FORMAT, formatLabels, static_cast<int>(OpdsFilenameFormat::Count),
@@ -200,21 +138,17 @@ void OpdsServerListActivity::handleSelection() {
   auto resultHandler = [this](const ActivityResult&) {
     // Reload server list when returning from editor
     OPDS_STORE.loadFromFile();
-    selectedIndex = 0;
+    nav.selected = 0;
   };
 
-  if (selectedIndex < serverCount) {
-    startActivityForResult(std::make_unique<OpdsSettingsActivity>(renderer, mappedInput, selectedIndex), resultHandler);
+  if (nav.selected < serverCount) {
+    startActivityForResult(std::make_unique<OpdsSettingsActivity>(renderer, mappedInput, nav.selected), resultHandler);
   } else {
     startActivityForResult(std::make_unique<OpdsSettingsActivity>(renderer, mappedInput, -1), resultHandler);
   }
 }
 
-void OpdsServerListActivity::listScreen(UiApp::ScreenType& screen, void* user) {
-  static_cast<OpdsServerListActivity*>(user)->buildListScreen(screen);
-}
-
-void OpdsServerListActivity::buildListScreen(UiApp::ScreenType& screen) {
+void OpdsServerListActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Content below the GUI.drawHeader band, above the button hints.
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
@@ -263,34 +197,16 @@ void OpdsServerListActivity::buildListScreen(UiApp::ScreenType& screen) {
   fui::ListProps props;
   props.items = items.data();
   props.count = static_cast<uint16_t>(items.size());
-  props.selectedIndex = static_cast<int16_t>(selectedIndex);
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
-  const auto rows = fui::listVisibleRows(screen.body(), screen.theme().rowHeight, screen.theme().listRowGap);
-  visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, itemCount);  // clamp to range
-  props.topIndex = static_cast<uint16_t>(topIndex);
+  syncListViewport(screen, props);
   screen.list(props);
 }
 
-void OpdsServerListActivity::render(RenderLock&&) {
+void OpdsServerListActivity::render(RenderLock&& lock) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
-  renderer.clearScreen();
-
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
-
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
-  // indicator; the rest of the screen renders through the app.
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_OPDS_SERVERS));
-
-  uiReady = false;
-  app.render();
-  uiReady = true;
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderer.displayBuffer();
+  // indicator; the rest of the screen renders through the base skeleton.
+  UiListActivity::render(std::move(lock));
 }

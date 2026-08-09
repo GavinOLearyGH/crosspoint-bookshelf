@@ -136,8 +136,7 @@ void KeyboardEntryActivity::onEnter() {
   cursorMode = false;
   togglePos = false;
   passwordVisible = false;
-  selRow = 0;
-  selCol = 0;
+  keyboardNavigator.reset();
   delPressCount = 0;
   hintVisible = false;
   hintShowTime = 0;
@@ -148,6 +147,7 @@ void KeyboardEntryActivity::onEnter() {
   touchRouter.reset();
   touchRouter.holdMs = TOUCH_LONG_PRESS_MS;
   touchRouter.overrideHoldMs = TOUCH_DEL_LONG_PRESS_MS;
+  pendingTouchTaps.clear();
   interactionsReady = false;
   requestUpdate();
 }
@@ -163,87 +163,6 @@ const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const {
   return fui::builtinKeyboardLayout(layoutId, shifted, false, /*numberRow=*/true);
 }
 
-const fui::KeyboardKey* KeyboardEntryActivity::selectedKey() const {
-  const fui::KeyboardLayout& layout = currentLayout();
-  if (selRow < 0 || selRow >= layout.rowCount) return nullptr;
-  const fui::KeyboardRow& row = layout.rows[selRow];
-  if (selCol < 0 || selCol >= row.count) return nullptr;
-  return &row.keys[selCol];
-}
-
-int KeyboardEntryActivity::selectedLogicalIndex() const {
-  const fui::KeyboardLayout& layout = currentLayout();
-  int index = 0;
-  for (int r = 0; r < selRow && r < layout.rowCount; r++) {
-    index += layout.rows[r].count;
-  }
-  return index + selCol;
-}
-
-void KeyboardEntryActivity::clampSelection() {
-  const fui::KeyboardLayout& layout = currentLayout();
-  if (layout.rowCount == 0) {
-    selRow = 0;
-    selCol = 0;
-    return;
-  }
-  if (selRow < 0) selRow = 0;
-  if (selRow >= layout.rowCount) selRow = layout.rowCount - 1;
-  const int cols = layout.rows[selRow].count;
-  if (selCol < 0) selCol = 0;
-  if (selCol >= cols) selCol = cols > 0 ? cols - 1 : 0;
-}
-
-void KeyboardEntryActivity::moveSelectionRow(const int delta) {
-  const fui::KeyboardLayout& layout = currentLayout();
-  if (layout.rowCount == 0) return;
-  const int oldCols = selRow < layout.rowCount ? layout.rows[selRow].count : 1;
-  selRow = (selRow + delta + layout.rowCount) % layout.rowCount;
-  const int newCols = layout.rows[selRow].count;
-  // Proportional column mapping keeps vertical travel intuitive between rows
-  // of different key counts (e.g. a 10-key letter row over a 6-key bottom row).
-  if (oldCols > 0 && newCols > 0 && oldCols != newCols) {
-    selCol = selCol * newCols / oldCols;
-  }
-  clampSelection();
-}
-
-void KeyboardEntryActivity::moveSelectionCol(const int delta) {
-  const fui::KeyboardLayout& layout = currentLayout();
-  if (selRow < 0 || selRow >= layout.rowCount) return;
-  const int cols = layout.rows[selRow].count;
-  if (cols <= 0) return;
-  selCol = (selCol + delta + cols) % cols;
-}
-
-bool KeyboardEntryActivity::syncSelectionToValue(const int16_t value) {
-  const fui::KeyboardLayout& layout = currentLayout();
-  for (int r = 0; r < layout.rowCount; r++) {
-    for (int c = 0; c < layout.rows[r].count; c++) {
-      if (layout.rows[r].keys[c].value == value) {
-        selRow = r;
-        selCol = c;
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-size_t KeyboardEntryActivity::utf8Prev(const std::string& s, size_t pos) {
-  if (pos == 0) return 0;
-  pos--;
-  while (pos > 0 && (static_cast<uint8_t>(s[pos]) & 0xC0) == 0x80) pos--;
-  return pos;
-}
-
-size_t KeyboardEntryActivity::utf8Next(const std::string& s, size_t pos) {
-  if (pos >= s.length()) return s.length();
-  pos++;
-  while (pos < s.length() && (static_cast<uint8_t>(s[pos]) & 0xC0) == 0x80) pos++;
-  return pos;
-}
-
 void KeyboardEntryActivity::insertUtf8(const char* out) {
   if (!out || !*out) return;
   const size_t n = strlen(out);
@@ -255,22 +174,33 @@ void KeyboardEntryActivity::insertUtf8(const char* out) {
 
 bool KeyboardEntryActivity::backspaceUtf8() {
   if (text.empty() || cursorPos == 0) return false;
-  const size_t prev = utf8Prev(text, cursorPos);
+  const size_t prev = fui::utf8PreviousBoundary(text.data(), text.length(), cursorPos);
   text.erase(prev, cursorPos - prev);
   cursorPos = prev;
   return true;
 }
 
 bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPress) {
-  switch (value) {
-    case fui::QWERTY_KEY_SHIFT:
+  if (value == URL_PANEL_KEY) {
+    delPressCount = 0;
+    hintVisible = false;
+    urlPanel = !urlPanel;
+    symbols = false;
+    shifted = false;
+    keyboardNavigator.clamp(currentLayout());
+    return true;
+  }
+
+  const fui::KeyboardActivation activation = fui::keyboardActivationFor(currentLayout(), value, longPress);
+  switch (activation.kind) {
+    case fui::KeyboardActivationKind::Shift:
       delPressCount = 0;
       hintVisible = false;
       // Letters: case toggle. Symbols: pages between "?123" and "#+=".
       shifted = !shifted;
-      clampSelection();
+      keyboardNavigator.clamp(currentLayout());
       return true;
-    case fui::QWERTY_KEY_MODE:
+    case fui::KeyboardActivationKind::Mode:
       delPressCount = 0;
       hintVisible = false;
       if (urlPanel) {
@@ -279,20 +209,12 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
         symbols = !symbols;
         shifted = false;
       }
-      clampSelection();
+      keyboardNavigator.clamp(currentLayout());
       return true;
-    case URL_PANEL_KEY:
-      delPressCount = 0;
-      hintVisible = false;
-      urlPanel = !urlPanel;
-      symbols = false;
-      shifted = false;
-      clampSelection();
-      return true;
-    case fui::QWERTY_KEY_ENTER:
+    case fui::KeyboardActivationKind::Submit:
       onComplete(text);
       return false;
-    case fui::QWERTY_KEY_BACKSPACE:
+    case fui::KeyboardActivationKind::Delete:
       if (longPress) {
         text.clear();
         cursorPos = 0;
@@ -305,26 +227,24 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
       }
       backspaceUtf8();
       return true;
-    default: {
+    case fui::KeyboardActivationKind::Text:
       delPressCount = 0;
       hintVisible = false;
-      const fui::KeyboardLayout& layer = currentLayout();
-      // keyboardAltOutputFor covers explicit alts and the letter case-flip.
-      const char* out = longPress ? fui::keyboardAltOutputFor(layer, value) : nullptr;
-      if (!out) out = fui::keyboardOutputFor(layer, value);
-      if (!out) return false;
-      insertUtf8(out);
+      insertUtf8(activation.text);
       if (shifted && !symbols) {
         shifted = false;  // shift auto-releases after one character
-        clampSelection();
+        keyboardNavigator.clamp(currentLayout());
       }
       return true;
-    }
+    case fui::KeyboardActivationKind::Language:
+    case fui::KeyboardActivationKind::None:
+      return false;
   }
+  return false;
 }
 
 bool KeyboardEntryActivity::clearAllOrAltOnSelected() {
-  const fui::KeyboardKey* key = selectedKey();
+  const fui::KeyboardKey* key = keyboardNavigator.selected(currentLayout());
   if (!key) return false;
   if (key->value == fui::QWERTY_KEY_BACKSPACE) {
     text.clear();
@@ -496,7 +416,8 @@ void KeyboardEntryActivity::loop() {
   int ty = 0;
 
   size_t touchedCursorPos = 0;
-  if (mappedInput.wasScreenTapped(tx, ty) && cursorPositionFromPoint(tx, ty, touchedCursorPos)) {
+  const bool touchTapped = mappedInput.wasScreenTapped(tx, ty);
+  if (touchTapped && cursorPositionFromPoint(tx, ty, touchedCursorPos)) {
     cursorPos = std::min(touchedCursorPos, text.length());
     // The masked text field maps taps per byte; snap back to a boundary so
     // the cursor never lands inside a multi-byte character.
@@ -511,20 +432,27 @@ void KeyboardEntryActivity::loop() {
     return;
   }
 
+  // A touch-up is a one-update event, but render() temporarily makes the
+  // interaction table unavailable while rebuilding it. Retain every keyboard
+  // release until that table is safe to route against; otherwise lifting while
+  // the pressed-key highlight renders visibly acknowledges the key but loses
+  // its activation.
+  if (touchTapped && !cursorMode) pendingTouchTaps.push(static_cast<int16_t>(tx), static_cast<int16_t>(ty));
+
   if (!cursorMode && interactionsReady) {
     const bool pressedDown = mappedInput.wasScreenTouchDown(tx, ty);
-    int tapX = 0;
-    int tapY = 0;
-    const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
+    int16_t tapX = 0;
+    int16_t tapY = 0;
+    const bool tapped = pendingTouchTaps.pop(tapX, tapY);
     int hx = 0;
     int hy = 0;
     const bool inContact = mappedInput.isScreenTouchHeld(hx, hy);
 
     const fui::TouchHoldRouter::Result result =
         touchRouter.update(interactions, pressedDown, static_cast<int16_t>(tx), static_cast<int16_t>(ty), tapped,
-                           static_cast<int16_t>(tapX), static_cast<int16_t>(tapY), inContact, millis());
+                           tapX, tapY, inContact, millis());
     if (result.event) {
-      syncSelectionToValue(result.event.value);
+      keyboardNavigator.syncToValue(currentLayout(), result.event.value);
       if (activateValue(result.event.value, result.event.longPress)) {
         requestUpdate();
       }
@@ -554,7 +482,7 @@ void KeyboardEntryActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
     if (upHeld && !upLongHandled && !cursorMode) {
-      moveSelectionRow(-1);
+      keyboardNavigator.moveRow(currentLayout(), -1);
       requestUpdate();
     }
     upHeld = false;
@@ -577,7 +505,7 @@ void KeyboardEntryActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     if (downHeld && !downLongHandled && !cursorMode) {
-      moveSelectionRow(1);
+      keyboardNavigator.moveRow(currentLayout(), 1);
       requestUpdate();
     }
     downHeld = false;
@@ -586,7 +514,7 @@ void KeyboardEntryActivity::loop() {
 
   buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] {
     if (cursorMode) return;
-    moveSelectionCol(-1);
+    keyboardNavigator.moveCol(currentLayout(), -1);
     requestUpdate();
   });
 
@@ -597,7 +525,7 @@ void KeyboardEntryActivity::loop() {
         togglePos = false;
         requestUpdate();
       } else if (cursorPos > 0) {
-        cursorPos = utf8Prev(text, cursorPos);
+        cursorPos = fui::utf8PreviousBoundary(text.data(), text.length(), cursorPos);
         requestUpdate();
       }
     }
@@ -613,7 +541,7 @@ void KeyboardEntryActivity::loop() {
 
   buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] {
     if (cursorMode) return;
-    moveSelectionCol(1);
+    keyboardNavigator.moveCol(currentLayout(), 1);
     requestUpdate();
   });
 
@@ -633,7 +561,7 @@ void KeyboardEntryActivity::loop() {
       rightLongHandled = false;
     }
     if (cursorMode && !togglePos && cursorPos < text.length()) {
-      cursorPos = utf8Next(text, cursorPos);
+      cursorPos = fui::utf8NextBoundary(text.data(), text.length(), cursorPos);
       requestUpdate();
     }
     if (cursorMode) return;
@@ -646,7 +574,7 @@ void KeyboardEntryActivity::loop() {
     confirmLongHandled = false;
   }
 
-  const fui::KeyboardKey* selKey = selectedKey();
+  const fui::KeyboardKey* selKey = keyboardNavigator.selected(currentLayout());
   const bool selectedDel = selKey && selKey->value == fui::QWERTY_KEY_BACKSPACE;
 
   if (confirmHeld && !confirmLongHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
@@ -931,7 +859,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.modeLabel =
       (symbols || (inputType == InputType::Url && urlPanel)) ? tr(STR_KEY_MODE_ABC) : tr(STR_KEY_MODE_SYMBOLS);
   props.inputMask = static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress);
-  props.selectedIndex = cursorMode ? -1 : static_cast<int16_t>(selectedLogicalIndex());
+  props.selectedIndex = cursorMode ? -1 : keyboardNavigator.logicalIndex(layout);
   props.labelText.font = fui::GfxRendererTarget::FONT_BODY;
   props.altText.font = fui::GfxRendererTarget::FONT_SMALL;
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
