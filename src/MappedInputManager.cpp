@@ -132,26 +132,7 @@ void MappedInputManager::rememberTouchHeldTime() const {
   touchHeldOverrideAt = millis();
 }
 
-void MappedInputManager::swallowCurrentTouch() const {
-  touchSwallowActive = true;
-  touchSwallowWasDown = true;  // the long-press fired while the finger is down
-}
-
-void MappedInputManager::advanceTouchSwallow() const {
-  if (!touchSwallowActive) return;
-  float nx = 0.0f;
-  float ny = 0.0f;
-  const bool down = gpio.isTouchHeldAt(nx, ny);
-  // Clear only after an idle frame that follows a non-down frame, so the
-  // release-edge frame (which still carries the tap) stays swallowed.
-  if (!down && !touchSwallowWasDown) {
-    touchSwallowActive = false;
-  }
-  touchSwallowWasDown = down;
-}
-
 bool MappedInputManager::wasScreenTapped(int& x, int& y) const {
-  if (touchSwallowActive) return false;
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.wasTouchTap(nx, ny)) return false;
@@ -161,22 +142,27 @@ bool MappedInputManager::wasScreenTapped(int& x, int& y) const {
 }
 
 bool MappedInputManager::wasScreenTouchDown(int& x, int& y) const {
-  unsigned long heldMs = 0;
-  return wasScreenTouchDown(x, y, heldMs);
-}
-
-bool MappedInputManager::wasScreenTouchDown(int& x, int& y, unsigned long& heldMs) const {
-  if (touchSwallowActive) return false;
   float nx = 0.0f;
   float ny = 0.0f;
+  unsigned long heldMs = 0;
   if (!gpio.isTouchTapCandidate(nx, ny, heldMs)) return false;
   if (heldMs < TOUCH_DOWN_SELECT_DELAY_MS) return false;
   renderer.tapToLogical(nx, ny, x, y);
   return true;
 }
 
+bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
+  float nx = 0.0f;
+  float ny = 0.0f;
+  if (!gpio.wasTouchLongPress(nx, ny)) return false;
+  // Consuming the long-press implies acting on it: suppress the rest of the
+  // contact so the finger lift can't also tap whatever the action opened.
+  gpio.suppressTouchContact();
+  renderer.tapToLogical(nx, ny, x, y);
+  return true;
+}
+
 bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
-  if (touchSwallowActive) return false;
   // Live contact position while the finger is down (no tap-slop gate) — drag tracking.
   float nx = 0.0f;
   float ny = 0.0f;
@@ -185,10 +171,7 @@ bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
   return true;
 }
 
-bool MappedInputManager::wasScreenTouchReleased() const {
-  if (touchSwallowActive) return false;
-  return gpio.wasTouchReleased();
-}
+bool MappedInputManager::wasScreenTouchReleased() const { return gpio.wasTouchReleased(); }
 
 bool MappedInputManager::wasTapInRect(const int x, const int y, const int width, const int height) const {
   int tx = 0;

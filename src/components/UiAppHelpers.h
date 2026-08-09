@@ -13,13 +13,6 @@
 // Shared glue for activities hosting a FreeInkApp: the font-bound render
 // target and the touch snapshot FreeInkApp routing consumes.
 
-// Held duration past which a stationary touch contact fires a long-press.
-// Mirrors the physical-button hold-to-act convention but shorter, since a
-// finger hold has no button travel to absorb. Consumed by TouchLongPressRouter,
-// which dispatches WHILE the finger is still down (not on release). Rows must
-// opt in via InputLongPress to receive it.
-inline constexpr unsigned long UI_TOUCH_LONG_PRESS_MS = 500;
-
 // Bind the uiScale fonts before FreeInkApp's constructor derives its theme
 // metrics from the body font's line height.
 inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer) {
@@ -162,25 +155,21 @@ inline freeink::ui::InputSnapshot touchSnapshotFrom(const MappedInputManager& ma
   return snap;
 }
 
-// Fires a long-press WHILE the finger is still down — once a stationary contact
-// crosses UI_TOUCH_LONG_PRESS_MS — instead of on release, matching the
-// physical-button hold-to-act feel. Feed it each loop in place of
-// touchSnapshotFrom() and route the returned snapshot; only rows masked
-// InputLongPress receive the synthesized event. When it fires it tells the
-// input layer to swallow the rest of the contact (its continued hold and its
-// release edge), so the finger lift can't also tap-dismiss the popup the
-// long-press opens. Non-held frames delegate to touchSnapshotFrom() unchanged.
+// Long-press-aware snapshot builder: the SDK touch classifier fires the
+// long-press WHILE the finger is still down (matching the physical-button
+// hold-to-act feel) and suppresses the remainder of the contact, so the finger
+// lift can't also tap-dismiss the popup the long-press opens. Feed this each
+// loop in place of touchSnapshotFrom() and route the returned snapshot; only
+// rows masked InputLongPress receive the event. Non-held frames delegate to
+// touchSnapshotFrom() unchanged.
 class TouchLongPressRouter {
  public:
   freeink::ui::InputSnapshot snapshot(const MappedInputManager& mappedInput) {
     int x = 0;
     int y = 0;
-    unsigned long heldMs = 0;
-    if (mappedInput.wasScreenTouchDown(x, y, heldMs) && heldMs >= UI_TOUCH_LONG_PRESS_MS) {
-      // Threshold crossed while still pressed: dispatch a long-press release at
-      // the contact point now (routing matches it against InputLongPress), and
-      // swallow the remainder of this contact so the lift can't act twice.
-      mappedInput.swallowCurrentTouch();
+    if (mappedInput.wasScreenLongPress(x, y)) {
+      // Dispatch as a release at the contact point; routing matches it against
+      // InputLongPress.
       freeink::ui::InputSnapshot snap{};
       snap.touchReleased = true;
       snap.longPress = true;

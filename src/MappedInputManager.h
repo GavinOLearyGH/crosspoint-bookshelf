@@ -35,12 +35,6 @@ class MappedInputManager {
   MappedInputManager(HalGPIO& gpio, const GfxRenderer& renderer) : gpio(gpio), renderer(renderer) {}
 
   void update() const { gpio.update(); }
-  // Advances the swallowCurrentTouch() latch. Call once per frame from the main
-  // loop (where gpio.update() is guaranteed); it holds through the swallowed
-  // contact's release-edge frame, then clears on the following idle frame so a
-  // fresh touch is delivered normally. Not folded into update() because some
-  // activities never call update() yet still read touch (ConfirmationActivity).
-  void advanceTouchSwallow() const;
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;
@@ -50,14 +44,13 @@ class MappedInputManager {
   bool hasHomeKey() const { return gpio.hasHomeKey(); }
   bool wasScreenTapped(int& x, int& y) const;
   bool wasScreenTouchDown(int& x, int& y) const;
-  // Overload reporting the contact's current held duration (finger still down),
-  // so a hold can be detected and fired WHILE pressed rather than on release.
-  bool wasScreenTouchDown(int& x, int& y, unsigned long& heldMs) const;
-  // Ignore the remainder of the in-progress touch contact — its continued hold
-  // and its release edge. Used after a long-press fires while the finger is
-  // still down, so the ensuing finger lift can't also tap-dismiss the popup the
-  // long-press opened. Auto-clears once the contact ends and a new one begins.
-  void swallowCurrentTouch() const;
+  // One-shot long-press from the SDK touch classifier, fired WHILE the finger
+  // is still down (stationary contact held past the SDK threshold). Consuming
+  // it suppresses the remainder of the contact — its continued hold and its
+  // release edge — so the ensuing finger lift can't also tap-dismiss the popup
+  // the long-press opened. The SDK owns that latch and self-clears it once the
+  // contact ends.
+  bool wasScreenLongPress(int& x, int& y) const;
   bool isScreenTouchHeld(int& x, int& y) const;
   // Raw release edge, also true when the contact ended in a swipe or drag-off
   // (which wasScreenTapped never reports). InputSnapshot builders forward it
@@ -141,9 +134,4 @@ class MappedInputManager {
   mutable bool touchHeldOverrideValid = false;
   mutable unsigned long touchHeldOverrideMs = 0;
   mutable unsigned long touchHeldOverrideAt = 0;
-  // swallowCurrentTouch() state: while active, all touch-edge readers report
-  // nothing; touchSwallowWasDown tracks the prior frame's contact so the latch
-  // clears only after the release-edge frame has passed.
-  mutable bool touchSwallowActive = false;
-  mutable bool touchSwallowWasDown = false;
 };
