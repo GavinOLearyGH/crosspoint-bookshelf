@@ -99,7 +99,8 @@ void XtcReaderActivity::loop() {
   }
 
   // Enter chapter selection activity
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+      ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
     openChapterSelection();
   }
 

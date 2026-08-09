@@ -449,8 +449,8 @@ void KeyboardEntryActivity::loop() {
     const bool inContact = mappedInput.isScreenTouchHeld(hx, hy);
 
     const fui::TouchHoldRouter::Result result =
-        touchRouter.update(interactions, pressedDown, static_cast<int16_t>(tx), static_cast<int16_t>(ty), tapped,
-                           tapX, tapY, inContact, millis());
+        touchRouter.update(interactions, pressedDown, static_cast<int16_t>(tx), static_cast<int16_t>(ty), tapped, tapX,
+                           tapY, inContact, millis());
     if (result.event) {
       keyboardNavigator.syncToValue(currentLayout(), result.event.value);
       if (activateValue(result.event.value, result.event.longPress)) {
