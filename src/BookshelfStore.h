@@ -32,6 +32,7 @@ class BookshelfStore : public PersistableStore<BookshelfStore> {
   bool contains(const std::string& path);
   bool add(const std::string& path, uint64_t addedAt = 0);
   bool remove(const std::string& path);
+  bool updatePath(const std::string& oldPath, const std::string& newPath);
   bool pruneMissing();
 
   const std::vector<BookshelfEntry>& getEntries() {
