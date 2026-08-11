@@ -93,14 +93,13 @@ jobs:
       - name: Build CrossPoint
         # All envs in ONE pio invocation: a second `pio run` can wipe the whole
         # .pio/build tree (project-checksum mismatch after the S3 toolchain
-        # installs into the restored cache), deleting the default firmware.bin
-        # before the artifact upload.
+        # installs into the restored cache), deleting firmware images before
+        # artifact upload.
         run: |
           set -euo pipefail
           pio run -e default -e sticky -e x4pro | tee pio.log
 
       - name: Extract firmware stats
-
         run: |
           set -euo pipefail
           ram_line="$(grep -E "RAM:\\s" -m1 pio.log || true)"
@@ -113,11 +112,18 @@ jobs:
             if [ -n "$flash_line" ]; then echo "- ${flash_line}"; else echo "- Flash: not found"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload firmware.bin artifact
+      - name: Upload default firmware artifact
         uses: actions/upload-artifact@v6
         with:
-          name: firmware.bin
+          name: firmware-default
           path: .pio/build/default/firmware.bin
+          if-no-files-found: error
+
+      - name: Upload X4 Pro firmware artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware-x4pro
+          path: .pio/build/x4pro/firmware.bin
           if-no-files-found: error
 
   unit-tests:
@@ -160,7 +166,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fail because needed jobs failed
-        # Fail if any job failed or was cancelled (skipped jobs are ok)
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: exit 1
       - name: Success
