@@ -72,7 +72,8 @@ bool BookshelfStore::updatePath(const std::string& oldPath, const std::string& n
 
 bool BookshelfStore::markFinished(const std::string& path) {
   ensureLoaded();
-  auto it = std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  auto it =
+      std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
   if (it == entries.end()) return false;
   if (it->finished) return true;
   it->finished = true;
