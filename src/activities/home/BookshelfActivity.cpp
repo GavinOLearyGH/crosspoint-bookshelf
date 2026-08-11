@@ -68,7 +68,7 @@ void BookshelfActivity::repairFinishedPaths() {
 }
 
 void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
-  if (isFinishedPath(shelfBook.book.path)) {
+  if (BOOKSHELF.isFinished(shelfBook.book.path) || isFinishedPath(shelfBook.book.path)) {
     shelfBook.state = ShelfState::Finished;
     shelfBook.percentage = 100;
     shelfBook.banner = "100%";
@@ -107,9 +107,28 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
   int totalPages = 0;
   if (dataSize >= 6) totalPages = data[4] + (data[5] << 8);
 
+  // progress.bin stores zero-based page indexes. A chapter with N pages therefore
+  // reaches its final page at N-1, so divide by N-1 rather than N. The old math
+  // made even a true last page mathematically incapable of reaching 100%.
   float chapterProgress = 0.0f;
-  if (totalPages > 0) {
-    chapterProgress = std::clamp(static_cast<float>(page) / static_cast<float>(totalPages), 0.0f, 1.0f);
+  if (totalPages > 1) {
+    chapterProgress = std::clamp(static_cast<float>(page) / static_cast<float>(totalPages - 1), 0.0f, 1.0f);
+  } else if (totalPages == 1) {
+    chapterProgress = 1.0f;
+  }
+
+  // If the persisted position is the last page of the last spine item, treat it
+  // as completed immediately. This matches the user's visible reading position
+  // even before CrossPoint advances to the separate End-of-Book screen.
+  const int spineCount = epub.getSpineItemsCount();
+  const bool onFinalContentPage =
+      spineCount > 0 && totalPages > 0 && spineIndex >= spineCount - 1 && page >= totalPages - 1;
+  if (onFinalContentPage) {
+    BOOKSHELF.markFinished(shelfBook.book.path);
+    shelfBook.state = ShelfState::Finished;
+    shelfBook.percentage = 100;
+    shelfBook.banner = "100%";
+    return;
   }
 
   float bookProgress = 0.0f;
