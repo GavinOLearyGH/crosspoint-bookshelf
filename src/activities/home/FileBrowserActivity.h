@@ -12,8 +12,9 @@ class FileBrowserActivity final : public UiListActivity {
   enum class Mode { Books, PickFirmware };
 
  private:
-  // Deletion
   bool removeDirFile(const std::string& fullPath);
+  void promptDelete(const std::string& fullPath, const std::string& entry);
+  void showBookActions(const std::string& fullPath, const std::string& entry);
 
   bool lockLongPressBack = false;
   // True when this activity was entered while Confirm was already held; we must swallow the next
@@ -32,16 +33,16 @@ class FileBrowserActivity final : public UiListActivity {
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
   // Long-press BACK goes to root; short Back goes up a directory (home/cancel at
-  // root), and Confirm activates on RELEASE (a hold is "delete").
+  // root), and Confirm activates on RELEASE (a hold opens actions for books or delete for folders).
   bool handleCustomInput() override;
   bool handleButtons() override;
   // Header shows the current folder name (battery indicator via GUI.drawHeader);
   // footer labels depend on path depth and picker mode.
   void drawChrome() override;
   void drawFooter() override;
-  // forceDelete routes the touch long-press to the delete branch; button
+  // forceLongPress routes a touch long-press to the long-press branch; button
   // navigation leaves it false and relies on getHeldTime() instead.
-  void activateSelected(bool forceDelete = false);
+  void activateSelected(bool forceLongPress = false);
 
   // Data loading
   void loadFiles();
