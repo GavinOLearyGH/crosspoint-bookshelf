@@ -5,6 +5,12 @@
 
 #include <algorithm>
 
+void BookshelfStore::ensureLoaded() {
+  if (loaded) return;
+  loaded = true;
+  loadFromFile();
+}
+
 void BookshelfStore::toJson(JsonDocument& doc) const {
   JsonArray arr = doc["books"].to<JsonArray>();
   for (const auto& entry : entries) {
@@ -15,6 +21,7 @@ void BookshelfStore::toJson(JsonDocument& doc) const {
 }
 
 bool BookshelfStore::fromJson(JsonVariantConst doc) {
+  loaded = true;
   entries.clear();
   JsonArrayConst arr = doc["books"].as<JsonArrayConst>();
   entries.reserve(arr.size());
@@ -33,11 +40,13 @@ bool BookshelfStore::fromJson(JsonVariantConst doc) {
   return true;
 }
 
-bool BookshelfStore::contains(const std::string& path) const {
+bool BookshelfStore::contains(const std::string& path) {
+  ensureLoaded();
   return std::any_of(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
 }
 
 bool BookshelfStore::add(const std::string& path, const uint64_t addedAt) {
+  ensureLoaded();
   if (path.empty() || contains(path)) return false;
 
   entries.push_back({path, addedAt});
@@ -48,6 +57,7 @@ bool BookshelfStore::add(const std::string& path, const uint64_t addedAt) {
 }
 
 bool BookshelfStore::remove(const std::string& path) {
+  ensureLoaded();
   const auto it =
       std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
   if (it == entries.end()) return false;
@@ -60,6 +70,7 @@ bool BookshelfStore::remove(const std::string& path) {
 }
 
 bool BookshelfStore::pruneMissing() {
+  ensureLoaded();
   const size_t before = entries.size();
   entries.erase(std::remove_if(entries.begin(), entries.end(),
                                [](const BookshelfEntry& entry) { return !Storage.exists(entry.path.c_str()); }),
