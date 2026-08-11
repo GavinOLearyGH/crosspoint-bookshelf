@@ -9,13 +9,13 @@
 
 class BookshelfActivity final : public UiListActivity {
  public:
+  enum class ShelfState : uint8_t { Reading, New, Finished };
+
   explicit BookshelfActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
   void onEnter() override;
   void onExit() override;
 
  private:
-  enum class ShelfState : uint8_t { Reading, New, Finished };
-
   struct ShelfBook {
     RecentBook book;
     ShelfState state = ShelfState::New;
