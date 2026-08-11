@@ -110,9 +110,8 @@ void BookshelfActivity::promptRemoveBook(const std::string& path, const std::str
     }
   };
 
-  startActivityForResult(
-      std::make_unique<ConfirmationActivity>(renderer, mappedInput, "Remove from Bookshelf?", title),
-      std::move(handler));
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, "Remove from Bookshelf?", title),
+                         std::move(handler));
 }
 
 void BookshelfActivity::buildScreen(UiScreen& screen) {
