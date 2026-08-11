@@ -9,6 +9,7 @@
 struct BookshelfEntry {
   std::string path;
   uint64_t addedAt = 0;
+  bool finished = false;
 };
 
 class BookshelfStore : public PersistableStore<BookshelfStore> {
@@ -33,6 +34,8 @@ class BookshelfStore : public PersistableStore<BookshelfStore> {
   bool add(const std::string& path, uint64_t addedAt = 0);
   bool remove(const std::string& path);
   bool updatePath(const std::string& oldPath, const std::string& newPath);
+  bool markFinished(const std::string& path);
+  bool isFinished(const std::string& path);
   bool pruneMissing();
 
   const std::vector<BookshelfEntry>& getEntries() {
