@@ -14,11 +14,14 @@ struct BookshelfEntry {
 class BookshelfStore : public PersistableStore<BookshelfStore> {
  private:
   std::vector<BookshelfEntry> entries;
+  bool loaded = false;
 
   BookshelfStore() = default;
   ~BookshelfStore() = default;
 
   friend class PersistableStore<BookshelfStore>;
+
+  void ensureLoaded();
 
  public:
   static const char* getFilePath() { return "/.crosspoint/bookshelf.json"; }
@@ -26,12 +29,15 @@ class BookshelfStore : public PersistableStore<BookshelfStore> {
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
-  bool contains(const std::string& path) const;
+  bool contains(const std::string& path);
   bool add(const std::string& path, uint64_t addedAt = 0);
   bool remove(const std::string& path);
   bool pruneMissing();
 
-  const std::vector<BookshelfEntry>& getEntries() const { return entries; }
+  const std::vector<BookshelfEntry>& getEntries() {
+    ensureLoaded();
+    return entries;
+  }
   int getCount() const { return static_cast<int>(entries.size()); }
 };
 
