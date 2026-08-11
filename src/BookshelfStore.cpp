@@ -17,6 +17,7 @@ void BookshelfStore::toJson(JsonDocument& doc) const {
     JsonObject obj = arr.add<JsonObject>();
     obj["path"] = entry.path;
     obj["addedAt"] = entry.addedAt;
+    obj["finished"] = entry.finished;
   }
 }
 
@@ -29,7 +30,7 @@ bool BookshelfStore::fromJson(JsonVariantConst doc) {
   for (JsonObjectConst obj : arr) {
     const char* path = obj["path"] | "";
     if (path[0] == '\0') continue;
-    entries.push_back({path, obj["addedAt"] | 0ULL});
+    entries.push_back({path, obj["addedAt"] | 0ULL, obj["finished"] | false});
   }
 
   LOG_DBG("SHELF", "Bookshelf loaded from file (%d entries)", getCount());
@@ -44,7 +45,7 @@ bool BookshelfStore::contains(const std::string& path) {
 bool BookshelfStore::add(const std::string& path, const uint64_t addedAt) {
   ensureLoaded();
   if (path.empty() || contains(path)) return false;
-  entries.push_back({path, addedAt});
+  entries.push_back({path, addedAt, false});
   if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist bookshelf add: %s", path.c_str());
   return true;
 }
@@ -67,6 +68,23 @@ bool BookshelfStore::updatePath(const std::string& oldPath, const std::string& n
   it->path = newPath;
   if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist bookshelf path update");
   return true;
+}
+
+bool BookshelfStore::markFinished(const std::string& path) {
+  ensureLoaded();
+  auto it = std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  if (it == entries.end()) return false;
+  if (it->finished) return true;
+  it->finished = true;
+  if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist finished bookshelf state: %s", path.c_str());
+  return true;
+}
+
+bool BookshelfStore::isFinished(const std::string& path) {
+  ensureLoaded();
+  const auto it =
+      std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  return it != entries.end() && it->finished;
 }
 
 bool BookshelfStore::pruneMissing() {
