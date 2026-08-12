@@ -14,9 +14,11 @@
 
 #include "BookshelfStore.h"
 #include "MappedInputManager.h"
+#include "activities/util/BookActionsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/BookCacheUtils.h"
 
 namespace fui = freeink::ui;
 
@@ -68,28 +70,45 @@ void BookshelfActivity::repairFinishedPaths() {
 }
 
 void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
-  if (BOOKSHELF.isFinished(shelfBook.book.path) || isFinishedPath(shelfBook.book.path)) {
+  const std::string& path = shelfBook.book.path;
+  const bool explicitlyUnread = BOOKSHELF.isExplicitlyUnread(path);
+
+  if (BOOKSHELF.isFinished(path)) {
     shelfBook.state = ShelfState::Finished;
     shelfBook.percentage = 100;
     shelfBook.banner = "100%";
     return;
   }
 
-  if (!FsHelpers::hasEpubExtension(shelfBook.book.path)) {
-    shelfBook.state = ShelfState::New;
-    shelfBook.percentage = 0;
-    shelfBook.banner = "NEW";
+  if (!FsHelpers::hasEpubExtension(path)) {
+    if (isFinishedPath(path) && !explicitlyUnread) {
+      BOOKSHELF.markFinished(path);
+      shelfBook.state = ShelfState::Finished;
+      shelfBook.percentage = 100;
+      shelfBook.banner = "100%";
+    } else {
+      shelfBook.state = ShelfState::New;
+      shelfBook.percentage = 0;
+      shelfBook.banner = "NEW";
+    }
     return;
   }
 
-  Epub epub(shelfBook.book.path, "/.crosspoint");
+  Epub epub(path, "/.crosspoint");
   epub.load(false, true);
 
   HalFile progressFile;
   if (!Storage.openFileForRead("SHELF", epub.getCachePath() + "/progress.bin", progressFile)) {
-    shelfBook.state = ShelfState::New;
-    shelfBook.percentage = 0;
-    shelfBook.banner = "NEW";
+    if (isFinishedPath(path) && !explicitlyUnread) {
+      BOOKSHELF.markFinished(path);
+      shelfBook.state = ShelfState::Finished;
+      shelfBook.percentage = 100;
+      shelfBook.banner = "100%";
+    } else {
+      shelfBook.state = ShelfState::New;
+      shelfBook.percentage = 0;
+      shelfBook.banner = "NEW";
+    }
     return;
   }
 
@@ -102,14 +121,13 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
     return;
   }
 
+  if (explicitlyUnread) BOOKSHELF.markReading(path);
+
   const int spineIndex = data[0] + (data[1] << 8);
   const int page = data[2] + (data[3] << 8);
   int totalPages = 0;
   if (dataSize >= 6) totalPages = data[4] + (data[5] << 8);
 
-  // progress.bin stores zero-based page indexes. A chapter with N pages therefore
-  // reaches its final page at N-1, so divide by N-1 rather than N. The old math
-  // made even a true last page mathematically incapable of reaching 100%.
   float chapterProgress = 0.0f;
   if (totalPages > 1) {
     chapterProgress = std::clamp(static_cast<float>(page) / static_cast<float>(totalPages - 1), 0.0f, 1.0f);
@@ -117,14 +135,11 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
     chapterProgress = 1.0f;
   }
 
-  // If the persisted position is the last page of the last spine item, treat it
-  // as completed immediately. This matches the user's visible reading position
-  // even before CrossPoint advances to the separate End-of-Book screen.
   const int spineCount = epub.getSpineItemsCount();
   const bool onFinalContentPage =
       spineCount > 0 && totalPages > 0 && spineIndex >= spineCount - 1 && page >= totalPages - 1;
   if (onFinalContentPage) {
-    BOOKSHELF.markFinished(shelfBook.book.path);
+    BOOKSHELF.markFinished(path);
     shelfBook.state = ShelfState::Finished;
     shelfBook.percentage = 100;
     shelfBook.banner = "100%";
@@ -159,13 +174,28 @@ void BookshelfActivity::ensureCoverThumb(ShelfBook& shelfBook) {
 
 void BookshelfActivity::loadBooks() {
   books.clear();
-  books.reserve(BOOKSHELF.getEntries().size());
+  const auto& entries = BOOKSHELF.getEntries();
+  books.reserve(entries.size());
 
-  for (const auto& entry : BOOKSHELF.getEntries()) {
+  const auto& recents = RECENT_BOOKS.getBooks();
+
+  // Iterate newest shelf additions first. Stable sorting below preserves this
+  // order for New and Finished books while allowing active books to follow
+  // CrossPoint's existing recent-reading order.
+  for (auto entryIt = entries.rbegin(); entryIt != entries.rend(); ++entryIt) {
+    const auto& entry = *entryIt;
     ShelfBook shelfBook;
     shelfBook.book = RECENT_BOOKS.getDataFromBook(entry.path);
     shelfBook.addedAt = entry.addedAt;
     if (shelfBook.book.title.empty()) shelfBook.book.title = fallbackTitle(entry.path);
+
+    for (size_t rank = 0; rank < recents.size(); ++rank) {
+      if (recents[rank].path == entry.path) {
+        shelfBook.recentRank = static_cast<int>(rank);
+        break;
+      }
+    }
+
     loadReadingState(shelfBook);
     ensureCoverThumb(shelfBook);
     books.push_back(std::move(shelfBook));
@@ -175,7 +205,8 @@ void BookshelfActivity::loadBooks() {
     const int aRank = stateRank(a.state);
     const int bRank = stateRank(b.state);
     if (aRank != bRank) return aRank < bRank;
-    return a.addedAt > b.addedAt;
+    if (a.state == ShelfState::Reading && a.recentRank != b.recentRank) return a.recentRank < b.recentRank;
+    return false;
   });
 }
 
@@ -205,7 +236,7 @@ void BookshelfActivity::activateIndex(const int index) {
 void BookshelfActivity::onRowLongPress(const int index) {
   app.clearTapFlash();
   if (index < 0 || index >= listCount()) return;
-  promptRemoveBook(books[index].book.path, books[index].book.title);
+  showBookActions(index);
 }
 
 void BookshelfActivity::ensureSelectionVisible() {
@@ -252,7 +283,7 @@ bool BookshelfActivity::handleButtons() {
   if (!books.empty() && nav.selected < listCount() && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
       mappedInput.getHeldTime() >= LONG_PRESS_MS) {
     longPressFired = true;
-    promptRemoveBook(books[nav.selected].book.path, books[nav.selected].book.title);
+    showBookActions(nav.selected);
     return true;
   }
 
@@ -284,23 +315,85 @@ void BookshelfActivity::navigateButtons() {
       [this] { selectIndex(std::max(nav.selected - static_cast<int>(gridVisibleCells), 0)); });
 }
 
-void BookshelfActivity::promptRemoveBook(const std::string& path, const std::string& title) {
+void BookshelfActivity::refreshAfterAction() {
+  loadBooks();
+  if (books.empty()) {
+    nav.selected = 0;
+    gridTopIndex = 0;
+  } else if (nav.selected >= listCount()) {
+    nav.selected = listCount() - 1;
+    ensureSelectionVisible();
+  } else {
+    ensureSelectionVisible();
+  }
+  requestUpdate(true);
+}
+
+void BookshelfActivity::markBookUnread(const std::string& path) {
+  if (FsHelpers::hasEpubExtension(path)) {
+    Epub epub(path, "/.crosspoint");
+    epub.load(false, true);
+    const std::string progressPath = epub.getCachePath() + "/progress.bin";
+    if (Storage.exists(progressPath.c_str())) Storage.remove(progressPath.c_str());
+  }
+  BOOKSHELF.markUnread(path);
+}
+
+void BookshelfActivity::promptDeleteBook(const std::string& path, const std::string& title) {
   auto handler = [this, path](const ActivityResult& res) {
     if (res.isCancelled) return;
 
-    if (BOOKSHELF.remove(path)) {
-      loadBooks();
-      if (books.empty()) {
-        nav.selected = 0;
-      } else if (nav.selected >= listCount()) {
-        nav.selected = listCount() - 1;
-      }
-      ensureSelectionVisible();
-      requestUpdate(true);
+    if (Storage.remove(path.c_str())) {
+      BOOKSHELF.remove(path);
+      RECENT_BOOKS.removeByPath(path);
+      clearBookCache(path);
+      refreshAfterAction();
+    } else {
+      LOG_ERR("SHELF", "Failed to delete book from library: %s", path.c_str());
     }
   };
 
-  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, "Remove from Bookshelf?", title),
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, "Delete from Library?", title),
+                         std::move(handler));
+}
+
+void BookshelfActivity::showBookActions(const int index) {
+  if (index < 0 || index >= listCount()) return;
+
+  const std::string path = books[index].book.path;
+  const std::string title = books[index].book.title;
+  const bool finished = books[index].state == ShelfState::Finished;
+
+  auto handler = [this, path, title, finished](const ActivityResult& res) {
+    if (res.isCancelled) return;
+    const auto* menu = std::get_if<MenuResult>(&res.data);
+    if (!menu) return;
+
+    switch (menu->action) {
+      case BookActionsActivity::OPEN:
+        onSelectBook(path);
+        break;
+      case BookActionsActivity::TOGGLE_FINISHED:
+        if (finished) {
+          markBookUnread(path);
+        } else {
+          BOOKSHELF.markFinished(path);
+        }
+        refreshAfterAction();
+        break;
+      case BookActionsActivity::TOGGLE_BOOKSHELF:
+        BOOKSHELF.remove(path);
+        refreshAfterAction();
+        break;
+      case BookActionsActivity::DELETE_FROM_LIBRARY:
+        promptDeleteBook(path, title);
+        break;
+      default:
+        break;
+    }
+  };
+
+  startActivityForResult(std::make_unique<BookActionsActivity>(renderer, mappedInput, true, finished, true),
                          std::move(handler));
 }
 
@@ -346,7 +439,10 @@ void BookshelfActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   if (books.empty()) {
-    screen.centeredText("No books on your shelf", screen.theme().bodyText);
+    screen.centeredText("Your Bookshelf is empty", screen.theme().bodyText);
+    screen.spacer(static_cast<int16_t>(metrics.verticalSpacing * 2));
+    screen.centeredText("Long-press a book in Browse", screen.theme().smallText);
+    screen.centeredText("and choose Add to Bookshelf", screen.theme().smallText);
     return;
   }
 
