@@ -94,6 +94,18 @@ bool BookshelfStore::markUnread(const std::string& path) {
   return true;
 }
 
+bool BookshelfStore::markReading(const std::string& path) {
+  ensureLoaded();
+  auto it =
+      std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  if (it == entries.end()) return false;
+  if (!it->unread && !it->finished) return true;
+  it->finished = false;
+  it->unread = false;
+  if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist reading bookshelf state: %s", path.c_str());
+  return true;
+}
+
 bool BookshelfStore::isFinished(const std::string& path) {
   ensureLoaded();
   const auto it =
