@@ -4,7 +4,13 @@
 
 class BookActionsActivity final : public UiListActivity {
  public:
-  enum Action { OPEN = 0, TOGGLE_FINISHED = 1, TOGGLE_BOOKSHELF = 2, DELETE_FROM_LIBRARY = 3 };
+  enum Action {
+    OPEN = 0,
+    TOGGLE_FINISHED = 1,
+    TOGGLE_BOOKSHELF = 2,
+    DELETE_FROM_LIBRARY = 3,
+    DELETE_FROM_DEVICE = DELETE_FROM_LIBRARY
+  };
 
   BookActionsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool onBookshelf, bool finished = false,
                       bool shelfContext = false);
