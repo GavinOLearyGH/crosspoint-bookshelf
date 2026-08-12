@@ -7,12 +7,22 @@
 
 namespace fui = freeink::ui;
 
-BookActionsActivity::BookActionsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const bool onBookshelf)
-    : UiListActivity("BookActions", renderer, mappedInput), onBookshelf(onBookshelf) {}
+BookActionsActivity::BookActionsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const bool onBookshelf,
+                                         const bool finished, const bool shelfContext)
+    : UiListActivity("BookActions", renderer, mappedInput),
+      onBookshelf(onBookshelf),
+      finished(finished),
+      shelfContext(shelfContext) {}
 
 void BookActionsActivity::activateIndex(const int index) {
   app.clearTapFlash();
-  ActivityResult res{MenuResult{index}};
+
+  int action = index;
+  if (!shelfContext) {
+    action = index == 0 ? OPEN : (index == 1 ? TOGGLE_BOOKSHELF : DELETE_FROM_LIBRARY);
+  }
+
+  ActivityResult res{MenuResult{action}};
   res.isCancelled = false;
   setResult(std::move(res));
   finish();
@@ -39,14 +49,20 @@ void BookActionsActivity::buildScreen(UiScreen& screen) {
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  const char* shelfLabel = onBookshelf ? "Remove from Bookshelf" : "Add to Bookshelf";
-  fui::ListItem items[] = {{.label = "Open", .actionValue = OPEN},
-                           {.label = shelfLabel, .actionValue = TOGGLE_BOOKSHELF},
-                           {.label = "Delete from Device", .actionValue = DELETE_FROM_DEVICE}};
+  const char* shelfLabel = onBookshelf ? "Remove from Shelf" : "Add to Bookshelf";
+  const char* finishedLabel = finished ? "Mark Unread" : "Mark Finished";
+
+  fui::ListItem shelfItems[] = {{.label = "Open", .actionValue = OPEN},
+                                {.label = finishedLabel, .actionValue = TOGGLE_FINISHED},
+                                {.label = shelfLabel, .actionValue = TOGGLE_BOOKSHELF},
+                                {.label = "Delete from Library", .actionValue = DELETE_FROM_LIBRARY}};
+  fui::ListItem browserItems[] = {{.label = "Open", .actionValue = OPEN},
+                                  {.label = shelfLabel, .actionValue = TOGGLE_BOOKSHELF},
+                                  {.label = "Delete from Library", .actionValue = DELETE_FROM_LIBRARY}};
 
   fui::ListProps props;
-  props.items = items;
-  props.count = 3;
+  props.items = shelfContext ? shelfItems : browserItems;
+  props.count = shelfContext ? 4 : 3;
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;
   syncListViewport(screen, props);

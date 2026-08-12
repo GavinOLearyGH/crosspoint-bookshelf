@@ -1,287 +1,246 @@
-# CrossPoint Reader
+# CrossPoint Bookshelf
 
-[![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
+**CrossPoint Bookshelf is an experimental, lightweight Bookshelf extension for [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) on the XTEINK X4 Pro.**
 
-CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.
+It adds a curated reading shelf with cover art, reading progress, smart ordering, and a few simple book-management actions while intentionally keeping the underlying CrossPoint reading experience as close to upstream as possible.
 
-**Now running on:** ESP32C3-based Xteink [X4](https://www.xteink.com/products/xteink-x4) and [X3](https://www.xteink.com/products/xteink-x3).
+> [!IMPORTANT]
+> This is an independent community fork and is **not an official CrossPoint Reader release**. CrossPoint Reader and its contributors deserve the credit for the firmware, reader engine, X4 Pro support, UI framework, EPUB handling, and the overwhelming majority of the code in this repository.
 
-![CrossPoint Reader running on Xteink device](./docs/images/cover.jpg)
+## Project status
 
-> If you're planning to buy an Xteink device, consider purchasing an **X3/X4 Developer Edition** through https://crosspointreader.com. CrossPoint receives a small share of each sale, helping fund development costs.
+| | |
+|---|---|
+| **Bookshelf version** | V1.1 |
+| **Target device** | XTEINK X4 Pro |
+| **Upstream project** | [crosspoint-reader/crosspoint-reader](https://github.com/crosspoint-reader/crosspoint-reader) |
+| **Upstream branch used for the original Bookshelf baseline** | `feat-touch-ui` |
+| **Pinned upstream baseline commit** | `b4a240161016ffbc0d8ca4f8917afe870b6c2594` |
+| **Baseline date** | August 9, 2026 |
+| **Status** | Experimental / tested on a physical X4 Pro |
 
-## What can CrossPoint do?
+### A note about the X4 Pro beta version
 
-- **Reader engine**: EPUB 2/3 rendering with embedded-style option, image handling, hyphenation, kerning, chapter navigation, footnotes, bookmarks, dictionary lookups ([StarDict](docs/dictionary.md)), go-to-percent, auto page turn, orientation control, focus reading, KOReader progress sync and more. 
+The Bookshelf work was started from the X4 Pro beta development line and pinned to the exact upstream commit above so the build is reproducible. We initially discussed the public beta by number while it was changing quickly, but the beta number is not encoded in the repository commit itself. Public community discussion on August 11 identified **Beta 19** as the current X4 Pro beta at that time.
 
-- **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, and `.bmp`.
+For that reason, this README uses the **exact upstream commit SHA** as the authoritative baseline instead of claiming that the fork is based on “Beta 20.” This avoids misrepresenting the upstream project as its beta builds continue to move.
 
-- **Screenshots.**
+## Why Bookshelf?
 
-- **Custom fonts**: install your favorite fonts on the SD card.
+CrossPoint already has a good file browser, Recent Books, and quick access to recent reading from Home. What I wanted was one additional screen that answered a simpler question:
 
-- **Tilt page turn (X3 only)**.
+> **What are the books I actually want to read?**
 
-- **Library workflow**: folder browser, hidden-file toggle, long-press delete, recent books, SD-cache management.
+The files on the device remain the library. **Bookshelf is a smaller, intentional collection** of the books I am reading now, want to read next, or have finished.
 
-- **Wireless workflows**:
-  
-  - File transfer web UI
-  - EPUB Optimizer
-  - Web settings UI/API (edit many device settings from browser)
-  - WebSocket fast uploads
-  - WebDAV handler
-  - AP mode (hotspot) and STA mode (join existing Wi-Fi), both with QR helpers
-  - Calibre wireless connect flow
-  - OPDS browser with saved servers (up to 8), search, pagination, and direct download
-  - OTA update checks and installs from GitHub releases
+The goal is deliberately not to create a full library-management system. The X4 Pro is a reading device, and Bookshelf should remain lightweight enough that it never gets in the way of reading.
 
-- **Customization**: multiple themes (Classic, Lyra, Lyra Extended, RoundedRaff), sleep screen modes, front/side button remapping, status bar controls, power-button behavior, refresh cadence, and more.
+## Home
 
-- **Localization**: 24 UI languages and counting. RTL support.
+Bookshelf V1.1 keeps the familiar CrossPoint Home screen and places Bookshelf at the top of the main menu:
 
-### Coming soon:
+```text
+[ Recent Book ] [ Recent Book ] [ Recent Book ]
 
-- More themes.
-
-- Much more! stay tuned.
-
----
-
-## USB-locked devices (Xteink Unlocker)
-
-Some Xteink units purchased from third-party stores (e.g. AliExpress) ship with USB flashing locked from the factory.
-If your device is locked, you will need to use the **Xteink Unlocker** tool available at
-https://crosspointreader.com/#unlock-tool before you can flash CrossPoint.
-
-**You do not need this tool if you bought your device directly from xteink.com.** Those units are not locked.
-
-**Not sure if your device is locked?** Power it on, connect the USB-C cable, and try flashing via the web flasher first (see
-[Install firmware](#install-firmware) below). If the browser's serial device picker does not show your device, try a different
-USB port or browser before assuming the device is locked. Only reach for the unlocker if the device still doesn't appear.
-
-> ### ⚠️ WARNING: READ THIS BEFORE USING THE UNLOCKER ⚠️
-> 
-> **The only officially supported firmwares in the unlock tool are CrossPoint and CrossInk.**
-> 
-> Flashing any other firmware on a USB-locked device may **permanently brick the device** or leave it **permanently
-> stuck on that firmware with no recovery path**. Once USB flashing is re-locked, your only way back is via OTA, and if
-> the firmware you flashed doesn't support OTA, **there is no way out**.
-
-## Install firmware
-
-### Web installer (recommended)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), and choose an official CrossPoint release.
-
-### Web installer (specific version)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Download a `firmware.bin` from [Releases](https://github.com/crosspoint-reader/crosspoint-reader/releases), local build, or continuous integration artifact.
-3. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), click "Custom .bin" and upload a `firmware.bin`.
-
-### Revert to Official Firmware
-
-To revert to the official firmware, you can also flash the latest official firmware using https://crosspointreader.com/#flash-tools.
-
-### Command line
-
-1. Install [`esptool`](https://github.com/espressif/esptool):
-
-```bash
-pip install esptool
+Bookshelf
+Browse
+Recent
+File Transfer
+Settings
 ```
 
-2. Download `firmware.bin` from the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases).
-3. Connect your device via USB-C.
-4. Find the device port. On Linux, run `dmesg` after connecting. On macOS:
+If an OPDS server is configured, CrossPoint's existing OPDS entry is preserved as well.
 
-```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
+The three recent covers remain CrossPoint's native Recent Books experience. Bookshelf does not replace Home or the core navigation architecture.
+
+## The Bookshelf
+
+From **Browse**, long-press a book and choose **Add to Bookshelf**.
+
+Adding a book to the Shelf does not move or duplicate the actual book. It simply adds the book's path to a small Bookshelf store on the SD card.
+
+Bookshelf displays selected books in a **three-column cover grid** and uses CrossPoint's existing cached cover artwork and EPUB metadata.
+
+Each cover has a small status banner:
+
+```text
+NEW        37%        100%
 ```
 
-5. Flash:
+- **NEW** — on the Shelf but not started
+- **1–99%** — currently being read
+- **100%** — finished
 
-```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
+Reading progress is derived from CrossPoint's existing EPUB progress data rather than maintaining a second reading-progress system.
+
+## Smart ordering
+
+Bookshelf automatically keeps the most useful books toward the front:
+
+1. **Currently Reading**
+2. **New**
+3. **Finished**
+
+Currently-reading books use CrossPoint's existing Recent Books ordering as a lightweight recency signal. There are no Shelf tabs, filters, categories, collections, or sorting screens to manage.
+
+The sorting is intended to be useful without becoming another feature the reader has to think about.
+
+## Book actions
+
+Long-press a cover on the Bookshelf to access:
+
+```text
+Open
+Mark Finished / Mark Unread
+Remove from Shelf
+Delete from Library
 ```
 
-Adjust `/dev/ttyACM0` to match your system.
+### Remove from Shelf
 
-### Manual
+Removes the book from the curated Bookshelf only. **The actual book remains on the device.**
 
-See [Development quick start](#development-quick-start) below.
+### Delete from Library
 
----
+Deletes the book from the device and cleans up its CrossPoint cache, Recent Books entry, and Bookshelf membership.
 
-## Custom SD-card fonts
+### Mark Finished
 
-Convert your own TTF/OTF files into `.cpfont` files that load from the SD card. No firmware reflash is needed.
+Marks a book as complete and displays `100%` on the Shelf.
 
-1. Go to https://crosspointreader.com/fonts and open the "SD-card font builder" form.
-2. Upload up to four styles (regular, bold, italic, bold-italic), set the family name, point sizes, and Unicode range.
-3. Download the generated `.cpfont` files.
-4. Copy them to your SD card under `/fonts/YourFont/` (or `/.fonts/YourFont/` to hide the folder).
-5. Select the font on the device from the font settings.
+### Mark Unread
 
-Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build.
+Clears the completed state and, for EPUBs, resets the saved reading position so the book can genuinely be started again.
 
----
+## Empty Bookshelf
 
-## Documentation
+A new Shelf explains how to populate it rather than presenting an unexplained empty screen:
 
-- [User Guide](./USER_GUIDE.md)
-- [Web server usage](./docs/webserver.md)
-- [Web server endpoints](./docs/webserver-endpoints.md)
-- [Project scope](./SCOPE.md)
-- [Contributing docs](./docs/contributing/README.md)
-- [Touch and UI development](./docs/contributing/touch-and-ui.md) - FreeInkUI components for new screens, the touch bridge for existing ones, and build envs for the non-Xteink touch devices
+```text
+Your Bookshelf is empty
 
----
+Long-press a book in Browse
+and choose Add to Bookshelf
+```
 
-## Development quick start
+## Design philosophy
 
-### Prerequisites
+The guiding principle for this fork is:
 
-- [pioarduino](https://github.com/pioarduino/pioarduino) or VS Code + pioarduino plugin
-- Python 3.8+
-- `clang-format` 21
-- USB-C cable supporting data transfer
+> **CrossPoint remains the firmware; Bookshelf is an add-on.**
 
-### Setup
+Bookshelf therefore tries to reuse CrossPoint rather than replace it:
+
+- CrossPoint's reader engine remains unchanged by V1.1.
+- CrossPoint remains responsible for EPUB rendering and reading progress.
+- CrossPoint's cover cache and book metadata are reused.
+- CrossPoint's Recent Books data is reused for active-reading order.
+- Bookshelf has its own small persistent store at `/.crosspoint/bookshelf.json`.
+- Bookshelf-specific behavior lives primarily in `BookshelfActivity`, `BookshelfStore`, and `BookActionsActivity`.
+- Existing CrossPoint screens are changed only where an integration point is required.
+
+This is intentional. The smaller the integration footprint, the easier it should be to port Bookshelf onto future X4 Pro CrossPoint builds.
+
+## Upstream updates
+
+This fork is **not intended to become a permanently divergent CrossPoint distribution**.
+
+The intended maintenance model is:
+
+```text
+New CrossPoint X4 Pro build
+          |
+          v
+Review upstream changes
+          |
+          v
+Port/rebase the small Bookshelf layer
+          |
+          v
+Run full CI + X4 Pro build
+          |
+          v
+Test on physical X4 Pro
+```
+
+Bookshelf membership is stored on the SD card rather than compiled into the firmware, so the Shelf data is designed to survive firmware builds and updates.
+
+## Building for X4 Pro
+
+Clone this fork with its submodules:
 
 ```bash
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-cd crosspoint-reader
+git clone --recursive https://github.com/GavinOLearyGH/crosspoint-bookshelf.git
+cd crosspoint-bookshelf
+```
 
-# if cloned without --recursive:
+If the repository was cloned without submodules:
+
+```bash
 git submodule update --init --recursive
 ```
 
-### Nix/NixOS
-
-Nix/NixOS users can enter the development shell with either `nix develop` (flakes) or `nix-shell`:
+Build the X4 Pro target with PlatformIO:
 
 ```bash
-nix develop -f nix
-# or
-nix-shell nix
+pio run -e x4pro
 ```
 
-To flash a connected ESP32-C3 device, enable PlatformIO's udev rules in your NixOS configuration:
-
-```nix
-services.udev.packages = with pkgs; [ platformio-core.udev ];
-```
-
-After rebuilding the system configuration, reconnect the device or reload udev rules.
-
-### Build / flash / monitor
-
-```bash
-pio run --target upload
-```
-
-### Contributor pre-PR checks
-
-```bash
-./bin/clang-format-fix
-pio check -e default
-pio run -e default
-```
-
-### Debugging
-
-After flashing the new features, it’s recommended to capture detailed logs from the serial port.
-
-First, make sure all required Python packages are installed:
-
-```python
-python3 -m pip install pyserial colorama matplotlib
-```
-
-After that run the script:
-
-```sh
-# For Linux
-# This was tested on Debian and should work on most Linux systems.
-python3 scripts/debugging_monitor.py
-
-# For macOS
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
-```
-
-Minor adjustments may be required for Windows.
-
----
-
-## Internals
-
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based on this constraint.
-
-### Data caching
-
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
+The X4 Pro firmware output is:
 
 ```text
-.crosspoint/
-├── epub_<hash>/         # one directory per book, named by content hash
-│   ├── progress.bin     # reading position (chapter, page, etc.)
-│   ├── cover.bmp        # generated cover image
-│   ├── book.bin         # metadata: title, author, spine, TOC
-│   ├── css_rules.cache  # parsed CSS rule cache
-│   ├── img_*            # rendered image cache files
-│   └── sections/        # per-chapter layout cache
-│       ├── 0.bin
-│       ├── 1.bin
-│       └── ...
-├── settings.json        # device settings
-├── state.json           # resume/runtime state
-└── recent.json          # recent books list
+.pio/build/x4pro/firmware.bin
 ```
 
-Removing `/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
+The repository CI also uploads a dedicated **`firmware-x4pro`** artifact so the X4 Pro binary cannot be confused with the standard X3/X4 build.
 
-For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
+## Flashing
+
+Bookshelf firmware is experimental community firmware. Flashing custom firmware is at your own risk.
+
+For an unlocked X4 Pro, the CrossPoint web flasher can be used with its **Custom .bin** option:
+
+[CrossPoint Flash Tools](https://crosspointreader.com/#flash-tools)
+
+Please read CrossPoint's own installation, recovery, and device-locking guidance before flashing. In particular, do not assume instructions for an unlocked device apply to a USB-locked device.
+
+If you do not specifically want the Bookshelf modification, use the official upstream CrossPoint firmware instead.
+
+## What this fork does *not* try to do
+
+Bookshelf is intentionally narrow in scope. It is not trying to add:
+
+- a large library database
+- tags or collections
+- reading goals or streaks
+- social features
+- recommendations
+- complex statistics
+- a replacement reader engine
+- a replacement Home/navigation system
+
+The focus is simply **choosing books, seeing what is being read, and reading them**.
+
+## Contributing and upstream CrossPoint
+
+For CrossPoint itself, feature requests, documentation, supported firmware, and upstream development should go to the original project:
+
+**[crosspoint-reader/crosspoint-reader](https://github.com/crosspoint-reader/crosspoint-reader)**
+
+CrossPoint is open-source e-reader firmware maintained by its community of developers and readers. If you enjoy this fork, please also support and contribute to the upstream project that makes it possible.
+
+For Bookshelf-specific experiments or issues, use this fork.
+
+## Credits
+
+**CrossPoint Reader and its contributors** — for the firmware, X4 Pro port, FreeInk-based UI, reader engine, EPUB support, file browser, Recent Books, cover caching, device support, build system, and the foundation this experiment is built on.
+
+Upstream repository: [crosspoint-reader/crosspoint-reader](https://github.com/crosspoint-reader/crosspoint-reader)
+
+CrossPoint website: [crosspointreader.com](https://crosspointreader.com/)
+
+Bookshelf is a small community extension built on top of that work.
 
 ---
 
-## Contributing
-
-Contributions are welcome. If you're new to the codebase, start with the [contributing docs](./docs/contributing/README.md). For things to work on, check the [ideas discussion board](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas) — leave a comment before starting so we don't duplicate effort.
-
-Everyone here is a volunteer, so please be respectful and patient. For governance and community expectations, see [GOVERNANCE.md](./GOVERNANCE.md).
-
----
-
-## Community forks
-
-One of the best things about open source is that anyone can take the code in a different direction. If you need something outside CrossPoint's [scope](./SCOPE.md), check out the community forks:
-
-- [CrossInk](https://github.com/uxjulia/CrossInk) — Typography and reading tracking: Bionic Reading (bolds word stems to create fixation points), guide dots between words, improved paragraph indents, and replaces the default fonts with ChareInk/Lexend/Bitter.
-
-- [papyrix-reader](https://github.com/bigbag/papyrix-reader) — Adds FB2 and MD format support. Actively maintained with Arabic script support. Custom themes via SD card.
-
-- ~~[crosspet](https://github.com/trilwu/crosspet) — A Vietnamese fork that adds a Tamagotchi-style virtual chicken that grows based on your reading milestones (pages read, streaks, care). Also: Flashcards, Weather, Pomodoro timer, and mini-games.~~ (Unmaintained)
-
-- [crosspoint-reader-cjk](https://github.com/aBER0724/crosspoint-reader-cjk) — Purpose-built for Chinese, Japanese, and Korean reading.
-
-- [inx](https://github.com/obijuankenobiii/inx) — Completely reimagines the user interface with tabbed navigation.
-
-- ~~[PlusPoint](https://github.com/ngxson/pluspoint-reader) — custom JS apps support.~~ (Unmaintained)
-
-- [crosspoint-reader-papers3](https://github.com/juicecultus/crosspoint-reader-papers3) — Crosspoint port for M5Stack Paper S3. 
-
-- [t5s3-reader](https://github.com/ShallowGreen123/t5s3-reader) — Crosspoint port for LilyGo T5 ePaper S3 / T5S3 4.7-inch e-paper device.
-
-**Note:** Many of these features will make their way into CrossPoint over time. We maintain a slower pace to ensure rock-solid stability and squash bugs before they reach your device.
-
-Want to build your own device? Be sure to check out the [de-link](https://github.com/iandchasse/de-link) project.
-
----
-
-CrossPoint Reader is **not affiliated with Xteink or any device manufacturer**.
-
-Huge shoutout to [diy-esp32-epub-reader](https://github.com/atomic14/diy-esp32-epub-reader), which inspired this project.
+**CrossPoint Bookshelf is not affiliated with XTEINK or any device manufacturer and is not an official CrossPoint Reader release.**

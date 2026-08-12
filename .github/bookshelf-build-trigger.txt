@@ -1,2 +1,0 @@
-Bookshelf firmware CI rebuild trigger.
-No firmware behavior changes.
