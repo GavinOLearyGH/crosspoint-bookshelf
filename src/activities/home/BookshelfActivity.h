@@ -21,6 +21,7 @@ class BookshelfActivity final : public UiListActivity {
     ShelfState state = ShelfState::New;
     int percentage = 0;
     uint64_t addedAt = 0;
+    int recentRank = 1000;
     std::string banner = "NEW";
     std::string coverThumbPath;
   };
@@ -52,7 +53,10 @@ class BookshelfActivity final : public UiListActivity {
   void ensureCoverThumb(ShelfBook& shelfBook);
   void selectIndex(int index);
   void ensureSelectionVisible();
-  void promptRemoveBook(const std::string& path, const std::string& title);
+  void showBookActions(int index);
+  void markBookUnread(const std::string& path);
+  void promptDeleteBook(const std::string& path, const std::string& title);
+  void refreshAfterAction();
 
   static bool paintCover(freeink::ui::DrawTarget& target, freeink::ui::Rect rect,
                          const freeink::ui::CoverGridItem& item, uint16_t index, void* userData);
