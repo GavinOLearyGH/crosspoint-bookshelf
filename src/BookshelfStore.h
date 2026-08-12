@@ -37,6 +37,7 @@ class BookshelfStore : public PersistableStore<BookshelfStore> {
   bool updatePath(const std::string& oldPath, const std::string& newPath);
   bool markFinished(const std::string& path);
   bool markUnread(const std::string& path);
+  bool markReading(const std::string& path);
   bool isFinished(const std::string& path);
   bool isExplicitlyUnread(const std::string& path);
   bool pruneMissing();
