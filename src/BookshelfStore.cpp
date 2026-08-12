@@ -18,6 +18,7 @@ void BookshelfStore::toJson(JsonDocument& doc) const {
     obj["path"] = entry.path;
     obj["addedAt"] = entry.addedAt;
     obj["finished"] = entry.finished;
+    obj["unread"] = entry.unread;
   }
 }
 
@@ -30,7 +31,7 @@ bool BookshelfStore::fromJson(JsonVariantConst doc) {
   for (JsonObjectConst obj : arr) {
     const char* path = obj["path"] | "";
     if (path[0] == '\0') continue;
-    entries.push_back({path, obj["addedAt"] | 0ULL, obj["finished"] | false});
+    entries.push_back({path, obj["addedAt"] | 0ULL, obj["finished"] | false, obj["unread"] | false});
   }
 
   LOG_DBG("SHELF", "Bookshelf loaded from file (%d entries)", getCount());
@@ -45,7 +46,7 @@ bool BookshelfStore::contains(const std::string& path) {
 bool BookshelfStore::add(const std::string& path, const uint64_t addedAt) {
   ensureLoaded();
   if (path.empty() || contains(path)) return false;
-  entries.push_back({path, addedAt, false});
+  entries.push_back({path, addedAt, false, false});
   if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist bookshelf add: %s", path.c_str());
   return true;
 }
@@ -75,9 +76,21 @@ bool BookshelfStore::markFinished(const std::string& path) {
   auto it =
       std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
   if (it == entries.end()) return false;
-  if (it->finished) return true;
+  if (it->finished && !it->unread) return true;
   it->finished = true;
+  it->unread = false;
   if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist finished bookshelf state: %s", path.c_str());
+  return true;
+}
+
+bool BookshelfStore::markUnread(const std::string& path) {
+  ensureLoaded();
+  auto it =
+      std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  if (it == entries.end()) return false;
+  it->finished = false;
+  it->unread = true;
+  if (!saveToFile()) LOG_ERR("SHELF", "Failed to persist unread bookshelf state: %s", path.c_str());
   return true;
 }
 
@@ -85,7 +98,14 @@ bool BookshelfStore::isFinished(const std::string& path) {
   ensureLoaded();
   const auto it =
       std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
-  return it != entries.end() && it->finished;
+  return it != entries.end() && it->finished && !it->unread;
+}
+
+bool BookshelfStore::isExplicitlyUnread(const std::string& path) {
+  ensureLoaded();
+  const auto it =
+      std::find_if(entries.begin(), entries.end(), [&](const BookshelfEntry& entry) { return entry.path == path; });
+  return it != entries.end() && it->unread;
 }
 
 bool BookshelfStore::pruneMissing() {
