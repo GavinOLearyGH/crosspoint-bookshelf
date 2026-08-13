@@ -10,12 +10,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <memory>
 
+#include "BookshelfDiagnostics.h"
 #include "BookshelfStore.h"
 #include "MappedInputManager.h"
 #include "activities/util/BookActionsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "components/BookCoverGrid.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
@@ -58,13 +61,14 @@ BookshelfActivity::BookshelfActivity(GfxRenderer& renderer, MappedInputManager& 
     : UiListActivity("Bookshelf", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
 
 void BookshelfActivity::repairFinishedPaths() {
-  const auto entries = BOOKSHELF.getEntries();
+  const auto& entries = BOOKSHELF.getEntries();
   for (const auto& entry : entries) {
     if (Storage.exists(entry.path.c_str())) continue;
 
-    const std::string candidate = "/read/" + fileNameFromPath(entry.path);
+    const std::string oldPath = entry.path;
+    const std::string candidate = "/read/" + fileNameFromPath(oldPath);
     if (Storage.exists(candidate.c_str())) {
-      BOOKSHELF.updatePath(entry.path, candidate);
+      BOOKSHELF.updatePath(oldPath, candidate);
     }
   }
 }
@@ -76,7 +80,6 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
   if (BOOKSHELF.isFinished(path)) {
     shelfBook.state = ShelfState::Finished;
     shelfBook.percentage = 100;
-    shelfBook.banner = "100%";
     return;
   }
 
@@ -85,11 +88,9 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
       BOOKSHELF.markFinished(path);
       shelfBook.state = ShelfState::Finished;
       shelfBook.percentage = 100;
-      shelfBook.banner = "100%";
     } else {
       shelfBook.state = ShelfState::New;
       shelfBook.percentage = 0;
-      shelfBook.banner = "NEW";
     }
     return;
   }
@@ -103,11 +104,9 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
       BOOKSHELF.markFinished(path);
       shelfBook.state = ShelfState::Finished;
       shelfBook.percentage = 100;
-      shelfBook.banner = "100%";
     } else {
       shelfBook.state = ShelfState::New;
       shelfBook.percentage = 0;
-      shelfBook.banner = "NEW";
     }
     return;
   }
@@ -117,7 +116,6 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
   if (dataSize != 4 && dataSize != 6 && dataSize != 10) {
     shelfBook.state = ShelfState::New;
     shelfBook.percentage = 0;
-    shelfBook.banner = "NEW";
     return;
   }
 
@@ -142,7 +140,6 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
     BOOKSHELF.markFinished(path);
     shelfBook.state = ShelfState::Finished;
     shelfBook.percentage = 100;
-    shelfBook.banner = "100%";
     return;
   }
 
@@ -153,13 +150,14 @@ void BookshelfActivity::loadReadingState(ShelfBook& shelfBook) {
 
   shelfBook.state = ShelfState::Reading;
   shelfBook.percentage = std::clamp(static_cast<int>(std::lround(bookProgress)), 1, 99);
-  shelfBook.banner = std::to_string(shelfBook.percentage) + "%";
 }
 
 void BookshelfActivity::ensureCoverThumb(ShelfBook& shelfBook) {
   if (shelfBook.book.coverBmpPath.empty()) return;
 
-  shelfBook.coverThumbPath = UITheme::getCoverThumbPath(shelfBook.book.coverBmpPath, COVER_HEIGHT);
+  if (shelfBook.coverThumbPath.empty()) {
+    shelfBook.coverThumbPath = UITheme::getCoverThumbPath(shelfBook.book.coverBmpPath, COVER_HEIGHT);
+  }
   if (Storage.exists(shelfBook.coverThumbPath.c_str())) return;
 
   if (FsHelpers::hasEpubExtension(shelfBook.book.path)) {
@@ -172,6 +170,15 @@ void BookshelfActivity::ensureCoverThumb(ShelfBook& shelfBook) {
   }
 }
 
+void BookshelfActivity::prepareVisibleCovers() {
+  if (books.empty() || gridVisibleCells == 0) return;
+  const size_t first = std::min(static_cast<size_t>(gridTopIndex), books.size());
+  const size_t last = std::min(first + static_cast<size_t>(gridVisibleCells), books.size());
+  logBookshelfMemory("covers.begin", books.size());
+  for (size_t i = first; i < last; ++i) ensureCoverThumb(books[i]);
+  logBookshelfMemory("covers.end", books.size());
+}
+
 void BookshelfActivity::loadBooks() {
   books.clear();
   const auto& entries = BOOKSHELF.getEntries();
@@ -179,14 +186,10 @@ void BookshelfActivity::loadBooks() {
 
   const auto& recents = RECENT_BOOKS.getBooks();
 
-  // Iterate newest shelf additions first. Stable sorting below preserves this
-  // order for New and Finished books while allowing active books to follow
-  // CrossPoint's existing recent-reading order.
   for (auto entryIt = entries.rbegin(); entryIt != entries.rend(); ++entryIt) {
     const auto& entry = *entryIt;
     ShelfBook shelfBook;
     shelfBook.book = RECENT_BOOKS.getDataFromBook(entry.path);
-    shelfBook.addedAt = entry.addedAt;
     if (shelfBook.book.title.empty()) shelfBook.book.title = fallbackTitle(entry.path);
 
     for (size_t rank = 0; rank < recents.size(); ++rank) {
@@ -197,7 +200,9 @@ void BookshelfActivity::loadBooks() {
     }
 
     loadReadingState(shelfBook);
-    ensureCoverThumb(shelfBook);
+    if (!shelfBook.book.coverBmpPath.empty()) {
+      shelfBook.coverThumbPath = UITheme::getCoverThumbPath(shelfBook.book.coverBmpPath, COVER_HEIGHT);
+    }
     books.push_back(std::move(shelfBook));
   }
 
@@ -212,18 +217,26 @@ void BookshelfActivity::loadBooks() {
 
 void BookshelfActivity::onEnter() {
   UiListActivity::onEnter();
+  logBookshelfMemory("enter.begin");
 
   repairFinishedPaths();
   BOOKSHELF.pruneMissing();
   loadBooks();
+  logBookshelfMemory("load.end", books.size());
+
   nav.selected = books.empty() ? 0 : std::min(nav.selected, listCount() - 1);
   gridTopIndex = 0;
+  gridVisibleCells = INITIAL_VISIBLE_CELLS;
+  prepareVisibleCovers();
+  logBookshelfMemory("enter.end", books.size());
   requestUpdate();
 }
 
 void BookshelfActivity::onExit() {
   Activity::onExit();
-  books.clear();
+  logBookshelfMemory("exit.before_release", books.size());
+  std::vector<ShelfBook>().swap(books);
+  logBookshelfMemory("exit.after_release");
 }
 
 void BookshelfActivity::activateIndex(const int index) {
@@ -253,6 +266,7 @@ void BookshelfActivity::selectIndex(const int index) {
   if (books.empty()) return;
   nav.selected = std::clamp(index, 0, listCount() - 1);
   ensureSelectionVisible();
+  prepareVisibleCovers();
   requestUpdate();
 }
 
@@ -270,6 +284,7 @@ bool BookshelfActivity::handleCustomInput() {
     gridTopIndex = static_cast<uint16_t>(std::max(static_cast<int>(gridTopIndex) - page, 0));
   }
   nav.selected = std::min(static_cast<int>(gridTopIndex), count - 1);
+  prepareVisibleCovers();
   requestUpdate();
   return true;
 }
@@ -326,6 +341,7 @@ void BookshelfActivity::refreshAfterAction() {
   } else {
     ensureSelectionVisible();
   }
+  prepareVisibleCovers();
   requestUpdate(true);
 }
 
@@ -397,6 +413,16 @@ void BookshelfActivity::showBookActions(const int index) {
                          std::move(handler));
 }
 
+fui::CoverGridItem BookshelfActivity::provideGridItem(const uint16_t index, void* userData) {
+  auto* self = static_cast<BookshelfActivity*>(userData);
+  if (!self || index >= self->books.size()) return {};
+
+  fui::CoverGridItem item;
+  item.title = self->books[index].book.title.c_str();
+  item.actionValue = static_cast<int16_t>(index);
+  return item;
+}
+
 bool BookshelfActivity::paintCover(fui::DrawTarget& target, const fui::Rect rect, const fui::CoverGridItem& item,
                                    const uint16_t index, void* userData) {
   (void)target;
@@ -422,13 +448,22 @@ bool BookshelfActivity::paintCover(fui::DrawTarget& target, const fui::Rect rect
   }
   self->renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
 
+  char banner[8]{};
+  if (shelfBook.state == ShelfState::New) {
+    snprintf(banner, sizeof(banner), "NEW");
+  } else if (shelfBook.state == ShelfState::Finished) {
+    snprintf(banner, sizeof(banner), "100%%");
+  } else {
+    snprintf(banner, sizeof(banner), "%d%%", shelfBook.percentage);
+  }
+
   const int bannerY = rect.bottom() - STATUS_BANNER_HEIGHT;
   self->renderer.fillRect(rect.x + 1, bannerY, rect.width - 2, STATUS_BANNER_HEIGHT - 1);
-  const int textWidth = self->renderer.getTextWidth(UI_10_FONT_ID, shelfBook.banner.c_str());
+  const int textWidth = self->renderer.getTextWidth(UI_10_FONT_ID, banner);
   const int textHeight = self->renderer.getLineHeight(UI_10_FONT_ID);
   const int textX = rect.x + (rect.width - textWidth) / 2;
   const int textY = bannerY + (STATUS_BANNER_HEIGHT - textHeight) / 2;
-  self->renderer.drawText(UI_10_FONT_ID, textX, textY, shelfBook.banner.c_str(), false);
+  self->renderer.drawText(UI_10_FONT_ID, textX, textY, banner, false);
   return true;
 }
 
@@ -447,39 +482,15 @@ void BookshelfActivity::buildScreen(UiScreen& screen) {
   }
 
   const fui::Rect gridRect = screen.body();
-  gridVisibleCells = fui::coverGridVisibleCells(gridRect, GRID_COLUMNS, GRID_ROW_HEIGHT, GRID_GAP);
+  const BookCoverGrid::Layout layout{GRID_COLUMNS, COVER_WIDTH, COVER_HEIGHT, GRID_ROW_HEIGHT, GRID_GAP};
+  gridVisibleCells = BookCoverGrid::visibleCells(gridRect, layout);
   if (gridVisibleCells == 0) gridVisibleCells = GRID_COLUMNS;
   ensureSelectionVisible();
 
-  std::vector<fui::CoverGridItem> items;
-  items.reserve(books.size());
-  for (size_t i = 0; i < books.size(); ++i) {
-    fui::CoverGridItem item;
-    item.title = books[i].book.title.c_str();
-    item.actionValue = static_cast<int16_t>(i);
-    items.push_back(item);
-  }
-
-  fui::CoverGridProps props;
-  props.items = items.data();
-  props.count = static_cast<uint16_t>(items.size());
-  props.topIndex = gridTopIndex;
-  props.selectedIndex = static_cast<int16_t>(nav.selected);
-  props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch | fui::InputLongPress;
-  props.columns = GRID_COLUMNS;
-  props.coverSize = fui::Size{COVER_WIDTH, COVER_HEIGHT};
-  props.rowHeight = GRID_ROW_HEIGHT;
-  props.gap = GRID_GAP;
-  props.rowGap = GRID_GAP;
-  props.selectionIndicator = fui::CoverGridSelectionIndicator::CoverFrame;
-  props.titleText = screen.theme().smallText;
-  props.titleText.maxLines = 2;
-  props.labelHeight = static_cast<int16_t>(screen.target().lineHeight(props.titleText.font) * 2);
-  props.labelGap = 4;
-  props.coverPainter = &BookshelfActivity::paintCover;
-  props.coverPainterUserData = this;
-
+  auto props =
+      BookCoverGrid::makeProps(screen, layout, static_cast<uint16_t>(books.size()), gridTopIndex,
+                               static_cast<int16_t>(nav.selected), &BookshelfActivity::provideGridItem, this,
+                               &BookshelfActivity::paintCover, this, ACTION_ROW, fui::InputTouch | fui::InputLongPress);
   fui::coverGrid(screen.frame(), gridRect, props);
 }
 
