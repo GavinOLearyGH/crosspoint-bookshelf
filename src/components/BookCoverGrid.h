@@ -12,9 +12,9 @@ struct Layout {
   int16_t gap = 8;
 };
 
-inline freeink::ui::CoverGridProps makeProps(const freeink::ui::UiScreen& screen, const Layout& layout,
-                                             const uint16_t count, const uint16_t topIndex,
-                                             const int16_t selectedIndex,
+template <typename ScreenT>
+inline freeink::ui::CoverGridProps makeProps(const ScreenT& screen, const Layout& layout, const uint16_t count,
+                                             const uint16_t topIndex, const int16_t selectedIndex,
                                              freeink::ui::CoverGridItemProvider itemProvider,
                                              void* itemProviderUserData,
                                              freeink::ui::CoverGridCoverPainter coverPainter,
