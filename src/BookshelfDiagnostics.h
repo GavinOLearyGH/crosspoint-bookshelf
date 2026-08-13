@@ -39,11 +39,11 @@ inline void appendMemoryLog(const char* stage, const size_t bookCount, const uin
   }
 
   ++sequence;
-  const int lineLength = snprintf(
-      line, sizeof(line), "%06lu ms=%lu stage=%s books=%u heap=%u min=%u max_alloc=%u psram=%u\n",
-      static_cast<unsigned long>(sequence), static_cast<unsigned long>(millis()), stage,
-      static_cast<unsigned>(bookCount), static_cast<unsigned>(heap), static_cast<unsigned>(minHeap),
-      static_cast<unsigned>(maxAlloc), static_cast<unsigned>(psram));
+  const int lineLength =
+      snprintf(line, sizeof(line), "%06lu ms=%lu stage=%s books=%u heap=%u min=%u max_alloc=%u psram=%u\n",
+               static_cast<unsigned long>(sequence), static_cast<unsigned long>(millis()), stage,
+               static_cast<unsigned>(bookCount), static_cast<unsigned>(heap), static_cast<unsigned>(minHeap),
+               static_cast<unsigned>(maxAlloc), static_cast<unsigned>(psram));
   if (lineLength > 0) file.write(line, static_cast<size_t>(lineLength));
   file.flush();
   file.close();
