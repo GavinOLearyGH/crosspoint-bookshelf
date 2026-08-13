@@ -36,6 +36,10 @@ class HomeActivity final : public Activity {
   // Convert HomeMenuItem to menu index (used in onEnter)
   static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
     int i = 0;
+#if defined(FREEINK_DEVICE_X4PRO)
+    if (item == HomeMenuItem::BOOKSHELF) return i;
+    ++i;
+#endif
     if (item == HomeMenuItem::FILE_BROWSER) return i;
     ++i;
     if (item == HomeMenuItem::RECENTS) return i;
@@ -51,6 +55,9 @@ class HomeActivity final : public Activity {
   // Convert menu index to HomeMenuItem (used in loop)
   static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
     int i = 0;
+#if defined(FREEINK_DEVICE_X4PRO)
+    if (idx == i++) return HomeMenuItem::BOOKSHELF;
+#endif
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::RECENTS;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
@@ -61,6 +68,9 @@ class HomeActivity final : public Activity {
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();
+#if defined(FREEINK_DEVICE_X4PRO)
+  void onBookshelfOpen();
+#endif
   void onSettingsOpen();
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
