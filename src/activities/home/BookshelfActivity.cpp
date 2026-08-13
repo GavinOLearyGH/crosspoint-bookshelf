@@ -487,10 +487,10 @@ void BookshelfActivity::buildScreen(UiScreen& screen) {
   if (gridVisibleCells == 0) gridVisibleCells = GRID_COLUMNS;
   ensureSelectionVisible();
 
-  auto props = BookCoverGrid::makeProps(screen, layout, static_cast<uint16_t>(books.size()), gridTopIndex,
-                                        static_cast<int16_t>(nav.selected), &BookshelfActivity::provideGridItem, this,
-                                        &BookshelfActivity::paintCover, this, ACTION_ROW,
-                                        fui::InputTouch | fui::InputLongPress);
+  auto props =
+      BookCoverGrid::makeProps(screen, layout, static_cast<uint16_t>(books.size()), gridTopIndex,
+                               static_cast<int16_t>(nav.selected), &BookshelfActivity::provideGridItem, this,
+                               &BookshelfActivity::paintCover, this, ACTION_ROW, fui::InputTouch | fui::InputLongPress);
   fui::coverGrid(screen.frame(), gridRect, props);
 }
 
