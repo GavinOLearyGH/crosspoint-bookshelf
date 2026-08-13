@@ -13,6 +13,9 @@
 #include <cstring>
 #include <vector>
 
+#if defined(FREEINK_DEVICE_X4PRO)
+#include "BookshelfActivity.h"
+#endif
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -23,6 +26,9 @@
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Recents, File transfer, Settings
+#if defined(FREEINK_DEVICE_X4PRO)
+  count++;  // Bookshelf
+#endif
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -178,6 +184,11 @@ void HomeActivity::loop() {
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
     switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
+#if defined(FREEINK_DEVICE_X4PRO)
+      case HomeMenuItem::BOOKSHELF:
+        onBookshelfOpen();
+        break;
+#endif
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -309,13 +320,26 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
+  std::vector<const char*> menuItems;
+  std::vector<UIIcon> menuIcons;
+#if defined(FREEINK_DEVICE_X4PRO)
+  menuItems.push_back("Bookshelf");
+  menuIcons.push_back(Library);
+#endif
+  menuItems.insert(menuItems.end(), {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
+                                     tr(STR_SETTINGS_TITLE)});
+  menuIcons.insert(menuIcons.end(), {Folder, Recent, Transfer, Settings});
 
   if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
+#if defined(FREEINK_DEVICE_X4PRO)
+    const auto opdsIndex = menuItems.begin() + 3;
+    const auto opdsIconIndex = menuIcons.begin() + 3;
+#else
+    const auto opdsIndex = menuItems.begin() + 2;
+    const auto opdsIconIndex = menuIcons.begin() + 2;
+#endif
+    menuItems.insert(opdsIndex, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(opdsIconIndex, Library);
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -354,6 +378,12 @@ void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToR
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
+
+#if defined(FREEINK_DEVICE_X4PRO)
+void HomeActivity::onBookshelfOpen() {
+  activityManager.replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput));
+}
+#endif
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
