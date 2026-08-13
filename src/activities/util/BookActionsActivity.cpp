@@ -56,9 +56,9 @@ void BookActionsActivity::buildScreen(UiScreen& screen) {
                                 {.label = finishedLabel, .actionValue = TOGGLE_FINISHED},
                                 {.label = shelfLabel, .actionValue = TOGGLE_BOOKSHELF},
                                 {.label = "Delete from Library", .actionValue = DELETE_FROM_LIBRARY}};
-  fui::ListItem browserItems[] = {{.label = "Open", .actionValue = OPEN},
-                                  {.label = shelfLabel, .actionValue = TOGGLE_BOOKSHELF},
-                                  {.label = "Delete from Library", .actionValue = DELETE_FROM_LIBRARY}};
+  fui::ListItem browserItems[] = {{.label = "Open", .actionValue = 0},
+                                  {.label = shelfLabel, .actionValue = 1},
+                                  {.label = "Delete from Library", .actionValue = 2}};
 
   fui::ListProps props;
   props.items = shelfContext ? shelfItems : browserItems;
