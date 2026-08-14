@@ -1,5 +1,6 @@
 #include "HomeActivity.h"
 
+#include <BoardConfig.h>
 #include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
@@ -23,8 +24,12 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+namespace {
+bool firstHomeEntryThisBoot = true;
+}
+
 int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // Bookshelf, File Browser, Recents, File transfer, Settings
+  int count = 4;  // Bookshelf, File Browser, File transfer, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -115,6 +120,14 @@ void HomeActivity::onEnter() {
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
 
+  if (firstHomeEntryThisBoot) {
+    firstHomeEntryThisBoot = false;
+    if (BoardConfig::isX4Pro() && !APP_STATE.lastSleepFromReader) {
+      onBookshelfOpen();
+      return;
+    }
+  }
+
   requestUpdate();
 }
 
@@ -173,9 +186,6 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
-        break;
-      case HomeMenuItem::RECENTS:
-        onRecentsOpen();
         break;
       case HomeMenuItem::OPDS_BROWSER:
         onOpdsBrowserOpen();
@@ -289,13 +299,12 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS),
-                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Library, Folder, Recent, Transfer, Settings};
+  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Library, Folder, Transfer, Settings};
 
   if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 3, Library);
+    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + 2, Library);
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -307,7 +316,7 @@ void HomeActivity::render(RenderLock&&) {
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
+                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
@@ -331,8 +340,6 @@ void HomeActivity::render(RenderLock&&) {
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
 
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
-
-void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
 
 void HomeActivity::onBookshelfOpen() {
   activityManager.replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput));
