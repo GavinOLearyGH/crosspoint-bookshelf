@@ -1,6 +1,7 @@
 #include "HomeActivity.h"
 
 #include <Bitmap.h>
+#include <BoardConfig.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -15,23 +16,14 @@
 #include <vector>
 
 #include "BookshelfActivity.h"
-#include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
-int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // Bookshelf, File Browser, Recents, File transfer, Settings
-  if (!recentBooks.empty()) {
-    count += recentBooks.size();
-  }
-  if (hasOpdsServers) {
-    count++;
-  }
-  return count;
+namespace {
+bool firstHomeEntryThisBoot = true;
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -40,14 +32,8 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
   recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
 
   for (const RecentBook& book : books) {
-    if (recentBooks.size() >= maxBooks) {
-      break;
-    }
-
-    if (RecentBooksStore::isMissing(book)) {
-      continue;
-    }
-
+    if (recentBooks.size() >= maxBooks) break;
+    if (RecentBooksStore::isMissing(book)) continue;
     recentBooks.push_back(book);
   }
 }
@@ -65,14 +51,12 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
         if (FsHelpers::hasEpubExtension(book.path)) {
           Epub epub(book.path, "/.crosspoint");
           epub.load(false, true);
-
           if (!showingLoading) {
             showingLoading = true;
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
           }
           GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
-          bool success = epub.generateThumbBmp(coverHeight);
-          if (!success) {
+          if (!epub.generateThumbBmp(coverHeight)) {
             RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
             book.coverBmpPath = "";
           }
@@ -86,8 +70,7 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
               popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
             }
             GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
-            bool success = xtc.generateThumbBmp(coverHeight);
-            if (!success) {
+            if (!xtc.generateThumbBmp(coverHeight)) {
               RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
               book.coverBmpPath = "";
             }
@@ -107,13 +90,19 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
-  hasOpdsServers = OPDS_STORE.hasServers();
-
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
-  const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
+  const int base = static_cast<int>(recentBooks.size());
+  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem);
+
+  if (firstHomeEntryThisBoot) {
+    firstHomeEntryThisBoot = false;
+    if (BoardConfig::isX4Pro() && !APP_STATE.lastSleepFromReader) {
+      onBookshelfOpen();
+      return;
+    }
+  }
 
   requestUpdate();
 }
@@ -129,10 +118,7 @@ bool HomeActivity::storeCoverBuffer() {
   const size_t needed = renderer.getRegionByteSize(coverRectX, coverRectY, coverRectW, coverRectH);
   if (needed == 0) return false;
   coverBuffer = static_cast<uint8_t*>(malloc(needed));
-  if (!coverBuffer) {
-    LOG_ERR("HOME", "OOM: cover buffer (%u bytes", (unsigned)needed);
-    return false;
-  }
+  if (!coverBuffer) return false;
   coverBufferSize = needed;
   if (!renderer.copyRegionToBuffer(coverRectX, coverRectY, coverRectW, coverRectH, coverBuffer, coverBufferSize)) {
     free(coverBuffer);
@@ -162,23 +148,18 @@ void HomeActivity::loop() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
-    if (selectorIndex < recentBooks.size()) {
+    if (selectorIndex < static_cast<int>(recentBooks.size())) {
       onSelectBook(recentBooks[selectorIndex].path);
       return;
     }
+
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
+    switch (indexToMenuItem(menuIndex)) {
       case HomeMenuItem::BOOKSHELF:
         onBookshelfOpen();
         break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
-        break;
-      case HomeMenuItem::RECENTS:
-        onRecentsOpen();
-        break;
-      case HomeMenuItem::OPDS_BROWSER:
-        onOpdsBrowserOpen();
         break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
@@ -214,7 +195,6 @@ void HomeActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen = true;
-
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen && !recentBooks.empty()) {
     onSelectBook(recentBooks[0].path);
     return;
@@ -241,17 +221,12 @@ void HomeActivity::loop() {
   }
 
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
-  const int renderedMenuSelection =
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
-  const int renderedMenuCount =
-      menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
   int menuRow = -1;
   const int menuRowHeight = GUI.getMenuRowHeight(renderer);
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing, renderedMenuCount,
-                                              0, INT32_MAX, menuRowHeight);
+  const auto menuTouch =
+      mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing, 4, 0, INT32_MAX, menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex =
-        metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
+    const int touchedIndex = menuRow + static_cast<int>(recentBooks.size());
     if (menuTouch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -264,9 +239,7 @@ void HomeActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    activateSelection();
-  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) activateSelection();
 }
 
 void HomeActivity::render(RenderLock&&) {
@@ -275,10 +248,10 @@ void HomeActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
-  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
+  const bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
-                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
+                 nullptr);
 
   coverRectX = 0;
   coverRectY = metrics.homeTopPadding;
@@ -289,27 +262,15 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS),
-                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Library, Folder, Recent, Transfer, Settings};
-
-  if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 3, Library);
-  }
-
-  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
-    menuIcons.insert(menuIcons.begin(), Book);
-  }
+  std::vector<const char*> menuItems = {"Bookshelf", "Library", tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Library, Folder, Transfer, Settings};
 
   GUI.drawButtonMenu(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
-      static_cast<int>(menuItems.size()),
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
+      static_cast<int>(menuItems.size()), selectorIndex - static_cast<int>(recentBooks.size()),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
@@ -329,17 +290,9 @@ void HomeActivity::render(RenderLock&&) {
 }
 
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
-
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
-
-void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
-
 void HomeActivity::onBookshelfOpen() {
   activityManager.replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput));
 }
-
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
-
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
-
-void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
