@@ -49,7 +49,7 @@ void BookActionsActivity::buildScreen(UiScreen& screen) {
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  const char* shelfLabel = onBookshelf ? "Remove from Shelf" : "Add to Bookshelf";
+  const char* shelfLabel = onBookshelf ? "Remove from Bookshelf" : "Add to Bookshelf";
   const char* finishedLabel = finished ? "Mark Unread" : "Mark Finished";
 
   fui::ListItem shelfItems[] = {{.label = "Open", .actionValue = OPEN},
