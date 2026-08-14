@@ -33,12 +33,13 @@ class HomeActivity final : public Activity {
   std::vector<RecentBook> recentBooks;
   const HomeMenuItem initialMenuItem;
 
-  // Convert HomeMenuItem to menu index (used in onEnter)
+  // Convert HomeMenuItem to visible Home menu index (used in onEnter).
+  // Recent Books remains a valid internal activity/state, but it is no longer
+  // exposed as a Home menu row; fall back to the file browser selection if an
+  // old navigation path asks Home to restore RECENTS.
   static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
     int i = 0;
-    if (item == HomeMenuItem::FILE_BROWSER) return i;
-    ++i;
-    if (item == HomeMenuItem::RECENTS) return i;
+    if (item == HomeMenuItem::FILE_BROWSER || item == HomeMenuItem::RECENTS) return i;
     ++i;
     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
     if (hasOpdsUrl) ++i;
@@ -48,11 +49,10 @@ class HomeActivity final : public Activity {
     return 0;
   }
 
-  // Convert menu index to HomeMenuItem (used in loop)
+  // Convert visible Home menu index to HomeMenuItem (used in loop).
   static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
     int i = 0;
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
-    if (idx == i++) return HomeMenuItem::RECENTS;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
