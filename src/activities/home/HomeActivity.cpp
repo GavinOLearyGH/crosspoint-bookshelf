@@ -299,8 +299,7 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE)};
+  std::vector<const char*> menuItems = {"Bookshelf", "Library", tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Library, Folder, Transfer, Settings};
 
   if (hasOpdsServers) {
