@@ -117,12 +117,11 @@ void HomeActivity::render(RenderLock&&) {
   std::vector<UIIcon> menuIcons = {Library, Folder, Transfer, Settings};
 
   const int menuTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  GUI.drawButtonMenu(renderer,
-                     Rect{0, menuTop, pageWidth,
-                          pageHeight - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing},
-                     static_cast<int>(menuItems.size()), selectorIndex,
-                     [&menuItems](int index) { return std::string(menuItems[index]); },
-                     [&menuIcons](int index) { return menuIcons[index]; });
+  GUI.drawButtonMenu(
+      renderer, Rect{0, menuTop, pageWidth, pageHeight - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing},
+      static_cast<int>(menuItems.size()), selectorIndex,
+      [&menuItems](int index) { return std::string(menuItems[index]); },
+      [&menuIcons](int index) { return menuIcons[index]; });
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
