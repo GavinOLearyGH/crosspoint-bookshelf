@@ -100,11 +100,10 @@ jobs:
           pio run -e default -e sticky -e x4pro | tee pio.log
 
       - name: Extract firmware stats
-
         run: |
           set -euo pipefail
-          ram_line="$(grep -E "RAM:\\s" -m1 pio.log || true)"
-          flash_line="$(grep -E "Flash:\\s" -m1 pio.log || true)"
+          ram_line="$(grep -E "RAM:\s" -m1 pio.log || true)"
+          flash_line="$(grep -E "Flash:\s" -m1 pio.log || true)"
           echo "ram_line=${ram_line}" >> "$GITHUB_OUTPUT"
           echo "flash_line=${flash_line}" >> "$GITHUB_OUTPUT"
           {
@@ -113,11 +112,18 @@ jobs:
             if [ -n "$flash_line" ]; then echo "- ${flash_line}"; else echo "- Flash: not found"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload firmware.bin artifact
+      - name: Upload default firmware artifact
         uses: actions/upload-artifact@v6
         with:
-          name: firmware.bin
+          name: firmware-default
           path: .pio/build/default/firmware.bin
+          if-no-files-found: error
+
+      - name: Upload X4 Pro firmware artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware-x4pro
+          path: .pio/build/x4pro/firmware.bin
           if-no-files-found: error
 
   unit-tests:
