@@ -476,7 +476,7 @@ void BookshelfActivity::buildScreen(UiScreen& screen) {
   if (books.empty()) {
     screen.centeredText("Your Bookshelf is empty", screen.theme().bodyText);
     screen.spacer(static_cast<int16_t>(metrics.verticalSpacing * 2));
-    screen.centeredText("Long-press a book in Browse", screen.theme().smallText);
+    screen.centeredText("Long-press a book in Library", screen.theme().smallText);
     screen.centeredText("and choose Add to Bookshelf", screen.theme().smallText);
     return;
   }
