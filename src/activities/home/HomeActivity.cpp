@@ -1,7 +1,7 @@
 #include "HomeActivity.h"
 
-#include <BoardConfig.h>
 #include <Bitmap.h>
+#include <BoardConfig.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -299,7 +299,8 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<const char*> menuItems = {"Bookshelf", tr(STR_BROWSE_FILES), tr(STR_FILE_TRANSFER),
+                                        tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Library, Folder, Transfer, Settings};
 
   if (hasOpdsServers) {
@@ -316,7 +317,7 @@ void HomeActivity::render(RenderLock&&) {
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
+                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
