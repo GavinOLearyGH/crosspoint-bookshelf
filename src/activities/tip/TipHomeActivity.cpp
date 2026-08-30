@@ -3,7 +3,6 @@
 #include <GfxRenderer.h>
 
 #include <memory>
-#include <vector>
 
 #include "TipPocketRefActivity.h"
 #include "activities/ActivityManager.h"
@@ -22,24 +21,14 @@ void TipHomeActivity::activateIndex(const int index) {
 
   switch (index) {
     case 3:
-      startActivity(std::make_unique<TipPocketRefActivity>(renderer, mappedInput));
+      activityManager.pushActivity(std::make_unique<TipPocketRefActivity>(renderer, mappedInput));
       break;
     case 5:
       activityManager.goHome(HomeMenuItem::TIP);
       break;
-    case 0:
-      activityManager.goToFullScreenMessage("TODAY\n\nGolfer sync arrives in a later phase.");
-      break;
-    case 1:
-      activityManager.goToFullScreenMessage("PLAY\n\nRound companion arrives after the shell is proven.");
-      break;
-    case 2:
-      activityManager.goToFullScreenMessage("PRACTICE\n\nInteractive practice is the next build milestone.");
-      break;
-    case 4:
-      activityManager.goToFullScreenMessage("GOLFER\n\nPersonal golfer data arrives with local golfer state.");
-      break;
     default:
+      // Today, Play, Practice and Golfer are visible architecture anchors in Phase 1.
+      // Their interactive behavior is intentionally added in later phases.
       break;
   }
 }
@@ -53,11 +42,11 @@ void TipHomeActivity::buildScreen(UiScreen& screen) {
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   static const fui::ListItem items[] = {
-      {.label = "Today", .subtitle = "Your current focus and cue"},
-      {.label = "Play", .subtitle = "Round companion"},
-      {.label = "Practice", .subtitle = "Drills and structured sessions"},
+      {.label = "Today", .subtitle = "Your current focus and cue - later phase"},
+      {.label = "Play", .subtitle = "Round companion - later phase"},
+      {.label = "Practice", .subtitle = "Structured sessions - next milestone"},
       {.label = "Pocket Ref", .subtitle = "AS I GO, Sub-5, drills, warm-up and more"},
-      {.label = "Golfer", .subtitle = "Bag, yardages and personal state"},
+      {.label = "Golfer", .subtitle = "Bag, yardages and personal state - later phase"},
       {.label = "Read", .subtitle = "Return to Bookshelf, Library and CrossPoint"},
   };
 
