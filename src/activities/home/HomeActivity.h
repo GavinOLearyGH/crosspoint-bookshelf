@@ -30,6 +30,8 @@ class HomeActivity final : public Activity {
 
   static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
     int i = 0;
+    if (item == HomeMenuItem::TIP) return i;
+    ++i;
     if (item == HomeMenuItem::BOOKSHELF) return i;
     ++i;
     if (item == HomeMenuItem::FILE_BROWSER) return i;
@@ -46,6 +48,7 @@ class HomeActivity final : public Activity {
 
   static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
     int i = 0;
+    if (idx == i++) return HomeMenuItem::TIP;
     if (idx == i++) return HomeMenuItem::BOOKSHELF;
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::RECENTS;
@@ -56,6 +59,7 @@ class HomeActivity final : public Activity {
   }
 
   void onSelectBook(const std::string& path);
+  void onTipOpen();
   void onFileBrowserOpen();
   void onRecentsOpen();
   void onBookshelfOpen();
