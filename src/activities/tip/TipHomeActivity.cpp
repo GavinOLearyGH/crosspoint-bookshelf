@@ -38,7 +38,7 @@ void TipHomeActivity::buildScreen(UiScreen& screen) {
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
-  screen.centeredText("GOLF COMPANION", screen.theme().smallText);
+  screen.centeredText("GOLF COMPANION", screen.theme().bodyText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   static const fui::ListItem items[] = {
