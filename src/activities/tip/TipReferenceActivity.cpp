@@ -7,7 +7,8 @@
 
 namespace fui = freeink::ui;
 
-TipReferenceActivity::TipReferenceActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const int sectionIndex)
+TipReferenceActivity::TipReferenceActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                           const int sectionIndex)
     : UiListActivity("TipReference", renderer, mappedInput), sectionIndex(sectionIndex) {
   const auto& all = TipReferenceData::sections();
   if (sectionIndex >= 0 && sectionIndex < static_cast<int>(all.size())) {
