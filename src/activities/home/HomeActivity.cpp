@@ -41,14 +41,8 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
   recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
 
   for (const RecentBook& book : books) {
-    if (recentBooks.size() >= maxBooks) {
-      break;
-    }
-
-    if (RecentBooksStore::isMissing(book)) {
-      continue;
-    }
-
+    if (recentBooks.size() >= maxBooks) break;
+    if (RecentBooksStore::isMissing(book)) continue;
     recentBooks.push_back(book);
   }
 }
@@ -57,8 +51,8 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
   recentsLoading = true;
   bool showingLoading = false;
   Rect popupRect;
-
   int progress = 0;
+
   for (RecentBook& book : recentBooks) {
     if (!book.coverBmpPath.empty()) {
       std::string coverPath = UITheme::getCoverThumbPath(book.coverBmpPath, coverHeight);
@@ -66,7 +60,6 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
         if (FsHelpers::hasEpubExtension(book.path)) {
           Epub epub(book.path, "/.crosspoint");
           epub.load(false, true);
-
           if (!showingLoading) {
             showingLoading = true;
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
@@ -100,22 +93,17 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
     }
     progress++;
   }
-
   recentsLoaded = true;
   recentsLoading = false;
 }
 
 void HomeActivity::onEnter() {
   Activity::onEnter();
-
   hasOpdsServers = OPDS_STORE.hasServers();
-
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
-
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
-
   requestUpdate();
 }
 
@@ -199,7 +187,6 @@ void HomeActivity::loop() {
     selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
     requestUpdate();
   });
-
   buttonNavigator.onPrevious([this, menuCount] {
     selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
     requestUpdate();
@@ -218,7 +205,6 @@ void HomeActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen = true;
-
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen && !recentBooks.empty()) {
     onSelectBook(recentBooks[0].path);
     return;
@@ -245,17 +231,13 @@ void HomeActivity::loop() {
   }
 
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
-  const int renderedMenuSelection =
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
-  const int renderedMenuCount =
-      menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
+  const int renderedMenuCount = menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
   int menuRow = -1;
   const int menuRowHeight = GUI.getMenuRowHeight(renderer);
   const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing, renderedMenuCount,
                                               0, INT32_MAX, menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex =
-        metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
+    const int touchedIndex = metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
     if (menuTouch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -268,9 +250,7 @@ void HomeActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    activateSelection();
-  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) activateSelection();
 }
 
 void HomeActivity::render(RenderLock&&) {
@@ -280,7 +260,6 @@ void HomeActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
-
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
 
@@ -295,13 +274,11 @@ void HomeActivity::render(RenderLock&&) {
 
   std::vector<const char*> menuItems = {"The Irish Par", "Bookshelf", tr(STR_BROWSE_FILES),
                                         tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Home, Library, Folder, Recent, Transfer, Settings};
-
+  std::vector<UIIcon> menuIcons = {Library, Library, Folder, Recent, Transfer, Settings};
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 4, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 4, Library);
   }
-
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
     menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
     menuIcons.insert(menuIcons.begin(), Book);
@@ -312,15 +289,13 @@ void HomeActivity::render(RenderLock&&) {
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
-      static_cast<int>(menuItems.size()),
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
+      static_cast<int>(menuItems.size()), metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
   renderer.displayBuffer();
 
   if (!firstRenderDone) {
@@ -333,21 +308,10 @@ void HomeActivity::render(RenderLock&&) {
 }
 
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
-
-void HomeActivity::onTipOpen() {
-  activityManager.replaceActivity(std::make_unique<TipHomeActivity>(renderer, mappedInput));
-}
-
+void HomeActivity::onTipOpen() { activityManager.replaceActivity(std::make_unique<TipHomeActivity>(renderer, mappedInput)); }
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
-
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
-
-void HomeActivity::onBookshelfOpen() {
-  activityManager.replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput));
-}
-
+void HomeActivity::onBookshelfOpen() { activityManager.replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput)); }
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
-
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
-
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
