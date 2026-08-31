@@ -12,6 +12,7 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
 
  public:
   enum class Drill : uint8_t { None = 0, RandomYardage = 1 };
+  enum class Plan : uint8_t { None = 0, Min15 = 15, Min30 = 30, Min60 = 60 };
 
   static const char* getFilePath() { return "/.crosspoint/tip-practice.json"; }
 
@@ -22,8 +23,16 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   void recordRandomYardage(bool hit);
   void skipRandomYardage();
   void finishSession();
+
+  void startStructuredPlan(Plan selectedPlan);
+  void nextStructuredBlock();
+  void previousStructuredBlock();
+  void finishStructuredPlan();
+
   void setResumeOnWake(bool shouldResume);
   bool consumeResumeOnWake();
+  void setStructuredResumeOnWake(bool shouldResume);
+  bool consumeStructuredResumeOnWake();
 
   bool hasActiveSession() const { return active; }
   Drill activeDrill() const { return drill; }
@@ -37,8 +46,15 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   uint16_t lastHitsCount() const { return lastHits; }
   uint16_t lastMissesCount() const { return lastMisses; }
 
+  bool hasActiveStructuredPlan() const { return structuredActive; }
+  Plan structuredPlan() const { return plan; }
+  uint8_t structuredBlockIndex() const { return blockIndex; }
+  uint8_t structuredBlockCount() const;
+  bool shouldResumeStructuredOnWake() const { return structuredResumeOnWake; }
+
  private:
   int nextRandomYardage();
+  static uint8_t blockCountForPlan(Plan selectedPlan);
 
   bool active = false;
   Drill drill = Drill::None;
@@ -48,6 +64,11 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   uint16_t hits = 0;
   uint16_t misses = 0;
   uint32_t sequence = 1;
+
+  bool structuredActive = false;
+  Plan plan = Plan::None;
+  uint8_t blockIndex = 0;
+  bool structuredResumeOnWake = false;
 
   uint16_t completedSessions = 0;
   uint16_t lastAttempts = 0;
