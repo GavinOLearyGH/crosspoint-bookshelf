@@ -11,6 +11,10 @@ void TipPracticeStore::toJson(JsonDocument& doc) const {
   doc["hits"] = hits;
   doc["misses"] = misses;
   doc["sequence"] = sequence;
+  doc["structuredActive"] = structuredActive;
+  doc["plan"] = static_cast<uint8_t>(plan);
+  doc["blockIndex"] = blockIndex;
+  doc["structuredResumeOnWake"] = structuredResumeOnWake;
   doc["completedSessions"] = completedSessions;
   doc["lastAttempts"] = lastAttempts;
   doc["lastHits"] = lastHits;
@@ -28,6 +32,26 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
   misses = doc["misses"] | static_cast<uint16_t>(0);
   sequence = doc["sequence"] | static_cast<uint32_t>(1);
   if (sequence == 0) sequence = 1;
+
+  structuredActive = doc["structuredActive"] | false;
+  const uint8_t storedPlan = doc["plan"] | static_cast<uint8_t>(Plan::None);
+  switch (storedPlan) {
+    case static_cast<uint8_t>(Plan::Min15):
+      plan = Plan::Min15;
+      break;
+    case static_cast<uint8_t>(Plan::Min30):
+      plan = Plan::Min30;
+      break;
+    case static_cast<uint8_t>(Plan::Min60):
+      plan = Plan::Min60;
+      break;
+    default:
+      plan = Plan::None;
+      break;
+  }
+  blockIndex = doc["blockIndex"] | static_cast<uint8_t>(0);
+  structuredResumeOnWake = doc["structuredResumeOnWake"] | false;
+
   completedSessions = doc["completedSessions"] | static_cast<uint16_t>(0);
   lastAttempts = doc["lastAttempts"] | static_cast<uint16_t>(0);
   lastHits = doc["lastHits"] | static_cast<uint16_t>(0);
@@ -36,6 +60,16 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
   if (hits + misses > attempts) attempts = hits + misses;
   if (active && drill == Drill::None) active = false;
   if (!active || drill != Drill::RandomYardage) resumeOnWake = false;
+
+  const uint8_t count = blockCountForPlan(plan);
+  if (!structuredActive || plan == Plan::None || count == 0) {
+    structuredActive = false;
+    plan = Plan::None;
+    blockIndex = 0;
+    structuredResumeOnWake = false;
+  } else if (blockIndex >= count) {
+    blockIndex = count - 1;
+  }
   return true;
 }
 
@@ -80,6 +114,40 @@ void TipPracticeStore::finishSession() {
   saveToFile();
 }
 
+void TipPracticeStore::startStructuredPlan(const Plan selectedPlan) {
+  if (selectedPlan == Plan::None) return;
+  structuredActive = true;
+  plan = selectedPlan;
+  blockIndex = 0;
+  structuredResumeOnWake = false;
+  saveToFile();
+}
+
+void TipPracticeStore::nextStructuredBlock() {
+  if (!structuredActive) return;
+  const uint8_t count = structuredBlockCount();
+  if (count == 0) return;
+  if (blockIndex + 1 < count) {
+    blockIndex++;
+    saveToFile();
+  }
+}
+
+void TipPracticeStore::previousStructuredBlock() {
+  if (!structuredActive || blockIndex == 0) return;
+  blockIndex--;
+  saveToFile();
+}
+
+void TipPracticeStore::finishStructuredPlan() {
+  if (!structuredActive) return;
+  structuredActive = false;
+  plan = Plan::None;
+  blockIndex = 0;
+  structuredResumeOnWake = false;
+  saveToFile();
+}
+
 void TipPracticeStore::setResumeOnWake(const bool shouldResume) {
   const bool nextValue = shouldResume && active && drill == Drill::RandomYardage;
   if (resumeOnWake == nextValue) return;
@@ -92,6 +160,35 @@ bool TipPracticeStore::consumeResumeOnWake() {
   resumeOnWake = false;
   saveToFile();
   return true;
+}
+
+void TipPracticeStore::setStructuredResumeOnWake(const bool shouldResume) {
+  const bool nextValue = shouldResume && structuredActive && plan != Plan::None;
+  if (structuredResumeOnWake == nextValue) return;
+  structuredResumeOnWake = nextValue;
+  saveToFile();
+}
+
+bool TipPracticeStore::consumeStructuredResumeOnWake() {
+  if (!structuredResumeOnWake || !structuredActive || plan == Plan::None) return false;
+  structuredResumeOnWake = false;
+  saveToFile();
+  return true;
+}
+
+uint8_t TipPracticeStore::structuredBlockCount() const { return blockCountForPlan(plan); }
+
+uint8_t TipPracticeStore::blockCountForPlan(const Plan selectedPlan) {
+  switch (selectedPlan) {
+    case Plan::Min15:
+      return 3;
+    case Plan::Min30:
+      return 5;
+    case Plan::Min60:
+      return 6;
+    default:
+      return 0;
+  }
 }
 
 int TipPracticeStore::nextRandomYardage() {
