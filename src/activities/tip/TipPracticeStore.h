@@ -22,9 +22,12 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   void recordRandomYardage(bool hit);
   void skipRandomYardage();
   void finishSession();
+  void setResumeOnWake(bool shouldResume);
+  bool consumeResumeOnWake();
 
   bool hasActiveSession() const { return active; }
   Drill activeDrill() const { return drill; }
+  bool shouldResumeOnWake() const { return resumeOnWake; }
   int targetYardage() const { return currentYardage; }
   uint16_t attemptsCount() const { return attempts; }
   uint16_t hitsCount() const { return hits; }
@@ -39,6 +42,7 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
 
   bool active = false;
   Drill drill = Drill::None;
+  bool resumeOnWake = false;
   int currentYardage = 100;
   uint16_t attempts = 0;
   uint16_t hits = 0;
