@@ -32,7 +32,8 @@ void TipPracticeActivity::buildScreen(UiScreen& screen) {
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  const char* randomSubtitle = TIP_PRACTICE.hasActiveSession() ? "Resume current session" : "Start first live TIP drill";
+  const char* randomSubtitle =
+      TIP_PRACTICE.hasActiveSession() ? "Resume current session" : "Start first live TIP drill";
   const fui::ListItem items[] = {
       {.label = "Random Yardage", .subtitle = randomSubtitle},
       {.label = "15 Minute", .subtitle = "Structured session - later Phase 2"},
