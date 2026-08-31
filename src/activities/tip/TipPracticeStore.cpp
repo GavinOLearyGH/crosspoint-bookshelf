@@ -14,7 +14,6 @@ void TipPracticeStore::toJson(JsonDocument& doc) const {
   doc["structuredActive"] = structuredActive;
   doc["plan"] = static_cast<uint8_t>(plan);
   doc["blockIndex"] = blockIndex;
-  doc["structuredResumeOnWake"] = structuredResumeOnWake;
   doc["completedSessions"] = completedSessions;
   doc["lastAttempts"] = lastAttempts;
   doc["lastHits"] = lastHits;
@@ -50,7 +49,6 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
       break;
   }
   blockIndex = doc["blockIndex"] | static_cast<uint8_t>(0);
-  structuredResumeOnWake = doc["structuredResumeOnWake"] | false;
 
   completedSessions = doc["completedSessions"] | static_cast<uint16_t>(0);
   lastAttempts = doc["lastAttempts"] | static_cast<uint16_t>(0);
@@ -66,7 +64,6 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
     structuredActive = false;
     plan = Plan::None;
     blockIndex = 0;
-    structuredResumeOnWake = false;
   } else if (blockIndex >= count) {
     blockIndex = count - 1;
   }
@@ -119,7 +116,6 @@ void TipPracticeStore::startStructuredPlan(const Plan selectedPlan) {
   structuredActive = true;
   plan = selectedPlan;
   blockIndex = 0;
-  structuredResumeOnWake = false;
   saveToFile();
 }
 
@@ -144,7 +140,6 @@ void TipPracticeStore::finishStructuredPlan() {
   structuredActive = false;
   plan = Plan::None;
   blockIndex = 0;
-  structuredResumeOnWake = false;
   saveToFile();
 }
 
@@ -158,20 +153,6 @@ void TipPracticeStore::setResumeOnWake(const bool shouldResume) {
 bool TipPracticeStore::consumeResumeOnWake() {
   if (!resumeOnWake || !active || drill != Drill::RandomYardage) return false;
   resumeOnWake = false;
-  saveToFile();
-  return true;
-}
-
-void TipPracticeStore::setStructuredResumeOnWake(const bool shouldResume) {
-  const bool nextValue = shouldResume && structuredActive && plan != Plan::None;
-  if (structuredResumeOnWake == nextValue) return;
-  structuredResumeOnWake = nextValue;
-  saveToFile();
-}
-
-bool TipPracticeStore::consumeStructuredResumeOnWake() {
-  if (!structuredResumeOnWake || !structuredActive || plan == Plan::None) return false;
-  structuredResumeOnWake = false;
   saveToFile();
   return true;
 }
