@@ -4,6 +4,7 @@
 
 #include "TipPracticeStore.h"
 #include "TipRandomYardageActivity.h"
+#include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
