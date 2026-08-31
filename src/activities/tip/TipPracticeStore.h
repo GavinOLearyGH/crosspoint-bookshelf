@@ -31,8 +31,6 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
 
   void setResumeOnWake(bool shouldResume);
   bool consumeResumeOnWake();
-  void setStructuredResumeOnWake(bool shouldResume);
-  bool consumeStructuredResumeOnWake();
 
   bool hasActiveSession() const { return active; }
   Drill activeDrill() const { return drill; }
@@ -50,7 +48,6 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   Plan structuredPlan() const { return plan; }
   uint8_t structuredBlockIndex() const { return blockIndex; }
   uint8_t structuredBlockCount() const;
-  bool shouldResumeStructuredOnWake() const { return structuredResumeOnWake; }
 
  private:
   int nextRandomYardage();
@@ -68,7 +65,6 @@ class TipPracticeStore : public PersistableStore<TipPracticeStore> {
   bool structuredActive = false;
   Plan plan = Plan::None;
   uint8_t blockIndex = 0;
-  bool structuredResumeOnWake = false;
 
   uint16_t completedSessions = 0;
   uint16_t lastAttempts = 0;
