@@ -5,6 +5,7 @@
 void TipPracticeStore::toJson(JsonDocument& doc) const {
   doc["active"] = active;
   doc["drill"] = static_cast<uint8_t>(drill);
+  doc["resumeOnWake"] = resumeOnWake;
   doc["currentYardage"] = currentYardage;
   doc["attempts"] = attempts;
   doc["hits"] = hits;
@@ -20,6 +21,7 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
   active = doc["active"] | false;
   const uint8_t storedDrill = doc["drill"] | static_cast<uint8_t>(Drill::None);
   drill = storedDrill == static_cast<uint8_t>(Drill::RandomYardage) ? Drill::RandomYardage : Drill::None;
+  resumeOnWake = doc["resumeOnWake"] | false;
   currentYardage = std::clamp(doc["currentYardage"] | 100, 70, 180);
   attempts = doc["attempts"] | static_cast<uint16_t>(0);
   hits = doc["hits"] | static_cast<uint16_t>(0);
@@ -33,12 +35,14 @@ bool TipPracticeStore::fromJson(JsonVariantConst doc) {
 
   if (hits + misses > attempts) attempts = hits + misses;
   if (active && drill == Drill::None) active = false;
+  if (!active || drill != Drill::RandomYardage) resumeOnWake = false;
   return true;
 }
 
 void TipPracticeStore::startRandomYardage() {
   active = true;
   drill = Drill::RandomYardage;
+  resumeOnWake = false;
   attempts = 0;
   hits = 0;
   misses = 0;
@@ -72,7 +76,22 @@ void TipPracticeStore::finishSession() {
   completedSessions++;
   active = false;
   drill = Drill::None;
+  resumeOnWake = false;
   saveToFile();
+}
+
+void TipPracticeStore::setResumeOnWake(const bool shouldResume) {
+  const bool nextValue = shouldResume && active && drill == Drill::RandomYardage;
+  if (resumeOnWake == nextValue) return;
+  resumeOnWake = nextValue;
+  saveToFile();
+}
+
+bool TipPracticeStore::consumeResumeOnWake() {
+  if (!resumeOnWake || !active || drill != Drill::RandomYardage) return false;
+  resumeOnWake = false;
+  saveToFile();
+  return true;
 }
 
 int TipPracticeStore::nextRandomYardage() {
