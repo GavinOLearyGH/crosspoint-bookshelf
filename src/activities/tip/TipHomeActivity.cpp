@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "TipPocketRefActivity.h"
+#include "TipPracticeActivity.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 
@@ -20,6 +21,9 @@ void TipHomeActivity::activateIndex(const int index) {
   app.clearTapFlash();
 
   switch (index) {
+    case 2:
+      activityManager.pushActivity(std::make_unique<TipPracticeActivity>(renderer, mappedInput));
+      break;
     case 3:
       activityManager.pushActivity(std::make_unique<TipPocketRefActivity>(renderer, mappedInput));
       break;
@@ -27,8 +31,7 @@ void TipHomeActivity::activateIndex(const int index) {
       activityManager.goHome(HomeMenuItem::TIP);
       break;
     default:
-      // Today, Play, Practice and Golfer are visible architecture anchors in Phase 1.
-      // Their interactive behavior is intentionally added in later phases.
+      // Today, Play and Golfer remain architecture anchors for later phases.
       break;
   }
 }
@@ -44,7 +47,7 @@ void TipHomeActivity::buildScreen(UiScreen& screen) {
   static const fui::ListItem items[] = {
       {.label = "Today", .subtitle = "Your current focus and cue - later phase"},
       {.label = "Play", .subtitle = "Round companion - later phase"},
-      {.label = "Practice", .subtitle = "Structured sessions - next milestone"},
+      {.label = "Practice", .subtitle = "Random Yardage engine now active"},
       {.label = "Pocket Ref", .subtitle = "AS I GO, Sub-5, drills, warm-up and more"},
       {.label = "Golfer", .subtitle = "Bag, yardages and personal state - later phase"},
       {.label = "Read", .subtitle = "Return to Bookshelf, Library and CrossPoint"},
