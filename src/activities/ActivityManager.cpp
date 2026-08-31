@@ -18,6 +18,10 @@
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
+#include "tip/TipHomeActivity.h"
+#include "tip/TipPracticeActivity.h"
+#include "tip/TipPracticeStore.h"
+#include "tip/TipRandomYardageActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
 
@@ -224,6 +228,12 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {
+  TIP_PRACTICE.loadFromFile();
+  const bool resumeTipRandomYardage = currentActivity && currentActivity->name == "TipRandomYardage" &&
+                                      TIP_PRACTICE.hasActiveSession() &&
+                                      TIP_PRACTICE.activeDrill() == TipPracticeStore::Drill::RandomYardage;
+  TIP_PRACTICE.setResumeOnWake(resumeTipRandomYardage);
+
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
@@ -234,7 +244,28 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
   replaceActivity(std::make_unique<FullScreenMessageActivity>(renderer, mappedInput, std::move(message), style));
 }
 
+void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
+
 void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
+  // TIP practice fast resume is a one-shot sleep contract. It is only armed by
+  // goToSleep() while Random Yardage is the foreground activity, so a normal
+  // cold boot or navigating Home with an unfinished session does not hijack
+  // CrossPoint's reader-first startup behavior.
+  TIP_PRACTICE.loadFromFile();
+  if (TIP_PRACTICE.consumeResumeOnWake()) {
+    LOG_DBG("TIP", "Resuming Random Yardage after sleep");
+
+    // Rebuild the same navigation hierarchy the golfer had before sleep so
+    // Finish/Back naturally returns Random Yardage -> Practice -> TIP Home.
+    replaceActivity(std::make_unique<TipHomeActivity>(renderer, mappedInput));
+    loop();
+    pushActivity(std::make_unique<TipPracticeActivity>(renderer, mappedInput));
+    loop();
+    pushActivity(std::make_unique<TipRandomYardageActivity>(renderer, mappedInput));
+    loop();
+    return;
+  }
+
   if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
     const auto& activityName = currentActivity->name;
     if (activityName == "FileBrowser") {
@@ -251,7 +282,6 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
   }
   replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput, initialMenuItem));
 }
-void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {
@@ -298,7 +328,6 @@ void ActivityManager::requestUpdate(bool immediate) {
     }
   } else {
     // Deferring the update until current loop is finished
-    // This is to avoid multiple updates being requested in the same loop
     requestedUpdate = true;
   }
 }
