@@ -7,6 +7,13 @@
 
 class TipStructuredPracticeActivity : public UiListActivity {
  public:
+  struct Block {
+    const char* label;
+    const char* cue;
+    uint8_t minutes;
+    bool randomYardage;
+  };
+
   TipStructuredPracticeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, TipPracticeStore::Plan plan);
   void onEnter() override;
 
@@ -17,13 +24,6 @@ class TipStructuredPracticeActivity : public UiListActivity {
   const char* headerTitle() const override { return "PRACTICE PLAN"; }
 
  private:
-  struct Block {
-    const char* label;
-    const char* cue;
-    uint8_t minutes;
-    bool randomYardage;
-  };
-
   const Block* blocks() const;
   uint8_t blockCount() const;
   const Block& currentBlock() const;
