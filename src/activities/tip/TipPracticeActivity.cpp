@@ -51,12 +51,18 @@ void TipPracticeActivity::buildScreen(UiScreen& screen) {
 
   const char* randomSubtitle =
       TIP_PRACTICE.hasActiveSession() ? "Resume current session" : "Start first live TIP drill";
-  const auto activePlan = TIP_PRACTICE.hasActiveStructuredPlan() ? TIP_PRACTICE.structuredPlan() : TipPracticeStore::Plan::None;
+  const auto activePlan =
+      TIP_PRACTICE.hasActiveStructuredPlan() ? TIP_PRACTICE.structuredPlan() : TipPracticeStore::Plan::None;
   const fui::ListItem items[] = {
       {.label = "Random Yardage", .subtitle = randomSubtitle},
-      {.label = "15 Minute", .subtitle = activePlan == TipPracticeStore::Plan::Min15 ? "Resume structured session" : "Quick focused practice"},
-      {.label = "30 Minute", .subtitle = activePlan == TipPracticeStore::Plan::Min30 ? "Resume structured session" : "Balanced practice session"},
-      {.label = "60 Minute", .subtitle = activePlan == TipPracticeStore::Plan::Min60 ? "Resume structured session" : "Full practice session"},
+      {.label = "15 Minute",
+       .subtitle =
+           activePlan == TipPracticeStore::Plan::Min15 ? "Resume structured session" : "Quick focused practice"},
+      {.label = "30 Minute",
+       .subtitle =
+           activePlan == TipPracticeStore::Plan::Min30 ? "Resume structured session" : "Balanced practice session"},
+      {.label = "60 Minute",
+       .subtitle = activePlan == TipPracticeStore::Plan::Min60 ? "Resume structured session" : "Full practice session"},
   };
 
   fui::ListProps props;
