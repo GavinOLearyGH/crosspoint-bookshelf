@@ -10,6 +10,7 @@ class TipStructuredPracticeActivity : public UiListActivity {
   struct Block {
     const char* label;
     const char* cue;
+    const char* goal;
     uint8_t minutes;
     bool randomYardage;
   };
@@ -32,4 +33,5 @@ class TipStructuredPracticeActivity : public UiListActivity {
   std::string progressLine;
   std::string blockLine;
   std::string cueLine;
+  std::string goalLine;
 };
